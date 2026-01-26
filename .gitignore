@@ -1,3 +1,32 @@
+# ESP-IDF build artifacts
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/dependencies.lock
+
+# KiCad backup files
+*.kicad_sch-bak
+*.kicad_pcb-bak
+*-backups/
+\#*\#
+._*
+
+# KiCad lock files
+*.lck
+
+# KiCad generated files (regenerate from source)
+*-cache.lib
+*.dsn
+*.ses
+fp-info-cache
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
 # Prerequisites
 *.d
 

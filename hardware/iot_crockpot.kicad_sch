@@ -1,0 +1,24 @@
+(kicad_sch (version 20230121) (generator eeschema)
+
+  (uuid 00000000-0000-0000-0000-000000000001)
+
+  (paper "A4")
+
+  (title_block
+    (title "IoT Crockpot Controller")
+    (date "2025-01-25")
+    (rev "0.1")
+    (comment 1 "ESP32-based crockpot controller")
+    (comment 2 "Temperature sensor and relay control")
+  )
+
+  (lib_symbols
+  )
+
+
+  (text "IoT Crockpot Controller\n\nThis schematic is a placeholder.\nComponents to be added:\n- ESP32 module\n- Temperature sensor (TBD)\n- Relay/SSR module\n- OLED display (optional)\n- Power supply circuit\n- USB programming interface"
+    (at 100 80 0)
+    (effects (font (size 2 2)) (justify left))
+  )
+
+)
