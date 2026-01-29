@@ -10,6 +10,7 @@
 #define DISPLAY_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -83,8 +84,9 @@ void display_set_brightness(uint8_t brightness);
 display_type_t display_get_type(void);
 
 // Display configuration (TODO: move to menuconfig)
-#define DISPLAY_SDA_GPIO 21
-#define DISPLAY_SCL_GPIO 22
+// XIAO ESP32-C3 I2C pins: D4=GPIO6, D5=GPIO7
+#define DISPLAY_SDA_GPIO 6
+#define DISPLAY_SCL_GPIO 7
 #define DISPLAY_WIDTH    128
 #define DISPLAY_HEIGHT   64
 

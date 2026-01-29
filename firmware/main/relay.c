@@ -12,7 +12,8 @@ static const char* TAG = "relay";
 
 // Relay GPIO mapping
 static const gpio_num_t s_relay_gpio[RELAY_CHANNEL_COUNT] = {
-    [RELAY_CHANNEL_MAIN] = RELAY_MAIN_GPIO
+    [RELAY_CHANNEL_MAIN] = RELAY_MAIN_GPIO,
+    [RELAY_CHANNEL_AUX]  = RELAY_AUX_GPIO
 };
 
 // Current relay states

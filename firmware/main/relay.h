@@ -24,6 +24,7 @@ extern "C" {
  */
 typedef enum {
     RELAY_CHANNEL_MAIN = 0,     // Main heating element
+    RELAY_CHANNEL_AUX,          // Secondary relay (future use)
     RELAY_CHANNEL_COUNT
 } relay_channel_t;
 
@@ -73,7 +74,9 @@ bool relay_apply_state(crockpot_state_t state);
 
 // GPIO pins for relay control (configurable)
 // TODO: Move to menuconfig
-#define RELAY_MAIN_GPIO 5
+// XIAO ESP32-C3 pins: D2=GPIO4, D3=GPIO5
+#define RELAY_MAIN_GPIO 4   // D2 - Main heating element
+#define RELAY_AUX_GPIO  5   // D3 - Secondary relay (future use)
 
 // Relay active level (some relays are active-low)
 #define RELAY_ACTIVE_HIGH 1

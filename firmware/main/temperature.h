@@ -65,9 +65,12 @@ float temperature_f_to_c(float fahrenheit);
  */
 bool temperature_sensor_ok(void);
 
-// GPIO pin for temperature sensor (configurable)
-// TODO: Move to menuconfig
-#define TEMPERATURE_SENSOR_GPIO 4
+// MAX31855 SPI Configuration (XIAO ESP32-C3)
+// D1=GPIO3, D8=GPIO8, D9=GPIO9
+#define MAX31855_SPI_HOST   SPI2_HOST
+#define MAX31855_PIN_CS     3   // D1 - Chip Select
+#define MAX31855_PIN_CLK    8   // D8 - SPI Clock
+#define MAX31855_PIN_MISO   9   // D9 - SPI MISO (data from MAX31855)
 
 #ifdef __cplusplus
 }

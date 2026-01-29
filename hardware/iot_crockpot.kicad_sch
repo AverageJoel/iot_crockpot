@@ -2810,6 +2810,12 @@
 		(uuid "6bac017f-cb71-483f-8f90-3cfb4ca1c5ad")
 	)
 	(junction
+		(at 181.61 148.59)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "703217fb-e6c9-45a7-bd19-b678ab004ff1")
+	)
+	(junction
 		(at 228.6 120.65)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -2962,6 +2968,16 @@
 			(type default)
 		)
 		(uuid "497d2f1e-dfbc-4bb5-bb24-054abe5be439")
+	)
+	(wire
+		(pts
+			(xy 181.61 148.59) (xy 181.61 146.05)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "49ceb130-06a7-4b86-993a-0676a7e292ca")
 	)
 	(wire
 		(pts
@@ -3265,6 +3281,26 @@
 	)
 	(wire
 		(pts
+			(xy 167.64 148.59) (xy 181.61 148.59)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "d45cbde3-87d2-4228-b3d5-313de2bc708e")
+	)
+	(wire
+		(pts
+			(xy 181.61 148.59) (xy 184.15 148.59)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "decfec25-66ad-489b-bb94-c27ac539c41f")
+	)
+	(wire
+		(pts
 			(xy 228.6 81.28) (xy 228.6 72.39)
 		)
 		(stroke
@@ -3312,6 +3348,16 @@
 			(type default)
 		)
 		(uuid "f56d14e3-f4f9-4dc4-9526-5833d10c197f")
+	)
+	(wire
+		(pts
+			(xy 181.61 138.43) (xy 181.61 140.97)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "fcfd827c-bffd-4837-9134-f113562b262a")
 	)
 	(wire
 		(pts
@@ -3992,6 +4038,75 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:R_Small_US")
+		(at 181.61 143.51 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "47e2c7d3-737e-4a62-a8bb-9335197a1ec3")
+		(property "Reference" "R3"
+			(at 177.292 142.24 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10k"
+			(at 176.276 144.78 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 181.61 143.51 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 181.61 143.51 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Resistor, small US symbol"
+			(at 181.61 143.51 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "989c3b3f-87be-4184-bd93-39f0f87723cb")
+		)
+		(pin "2"
+			(uuid "2848514c-4aca-4066-959b-648a6a9f9c9d")
+		)
+		(instances
+			(project "iot_crockpot"
+				(path "/00000000-0000-0000-0000-000000000001"
+					(reference "R3")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:+5V")
 		(at 248.92 114.3 0)
 		(unit 1)
@@ -4259,6 +4374,72 @@
 			(project "iot_crockpot"
 				(path "/00000000-0000-0000-0000-000000000001"
 					(reference "#PWR011")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+3V3")
+		(at 181.61 138.43 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "5facdc21-91d8-4bc5-a06d-6b14412c4d1b")
+		(property "Reference" "#PWR012"
+			(at 181.61 142.24 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+3V3"
+			(at 181.61 133.35 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 181.61 138.43 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 181.61 138.43 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+3V3\""
+			(at 181.61 138.43 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "e6f47ca4-78f8-4269-983a-236215c3147f")
+		)
+		(instances
+			(project "iot_crockpot"
+				(path "/00000000-0000-0000-0000-000000000001"
+					(reference "#PWR012")
 					(unit 1)
 				)
 			)
