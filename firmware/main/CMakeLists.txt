@@ -7,6 +7,9 @@ idf_component_register(
         "relay.c"
         "telegram.c"
         "display.c"
+        "display_hal.c"
+        "touch_hal.c"
+        "gui.c"
     INCLUDE_DIRS "."
     REQUIRES
         nvs_flash
