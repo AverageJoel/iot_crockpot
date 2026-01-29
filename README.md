@@ -30,26 +30,26 @@ iot_crockpot/
 └── README.md
 ```
 
-## Hardware Requirements
+## Hardware
 
-- **MCU**: ESP32 (ESP32-WROOM-32 or similar)
-- **Temperature Sensor**: TBD (DS18B20, thermocouple, or NTC)
-- **Relay/SSR**: For controlling crockpot heating element
-- **Display** (Optional): SSD1306 OLED or small TFT
+- **MCU**: Seeed XIAO ESP32-C3 (RISC-V, WiFi/BLE)
+- **Temperature Sensor**: MAX31855 thermocouple IC (K-type)
+- **Relays**: 2x G5LE-1 via 2N7002 MOSFETs
+- **Display** (Optional): SSD1306 OLED (I2C)
 - **Power**: 5V USB or external supply
 
 ## Getting Started
 
 ### Prerequisites
 
-1. Install [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/) (v5.0+)
+1. Install [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/get-started/) (v5.0+)
 2. Install [KiCad](https://www.kicad.org/) (v7.0+) for hardware design
 
 ### Building Firmware
 
 ```bash
 cd firmware
-idf.py set-target esp32
+idf.py set-target esp32c3
 idf.py menuconfig  # Configure WiFi credentials
 idf.py build
 idf.py flash
@@ -77,7 +77,7 @@ Configure via `idf.py menuconfig`:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                              ESP32                                       │
+│                           ESP32-C3                                       │
 │                                                                          │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
 │  │                      Core Logic Layer                              │  │
@@ -111,9 +111,10 @@ Configure via `idf.py menuconfig`:
 - [x] Core state machine
 - [x] Telegram bot interface
 - [x] Local display framework
-- [ ] Temperature sensor driver (hardware TBD)
-- [ ] KiCad schematic (in progress)
+- [x] MAX31855 temperature sensor driver
+- [x] KiCad schematic
 - [ ] PCB layout
+- [ ] OLED display driver
 - [ ] Testing and validation
 
 ## Contributing
