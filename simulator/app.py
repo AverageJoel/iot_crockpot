@@ -52,7 +52,7 @@ class CrockpotApp(App):
 
     .screen-container {
         width: 60;
-        height: 24;
+        height: 28;
         border: double white;
         background: #16213e;
         padding: 1 2;
@@ -142,7 +142,7 @@ class CrockpotApp(App):
     /* Schedule list */
     .schedule-item {
         width: 100%;
-        height: 2;
+        height: 3;
         margin: 0;
     }
 
