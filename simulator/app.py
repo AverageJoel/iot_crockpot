@@ -253,9 +253,9 @@ class CrockpotApp(App):
         # Schedules screen
         with Container(id="schedules-screen", classes="screen-container hidden"):
             yield Static("Schedules", classes="screen-title")
-            yield Button("Slow Cook (H3h>L6h>W)", id="sched-1", classes="schedule-item")
-            yield Button("Quick Warm (H1h>W)", id="sched-2", classes="schedule-item")
-            yield Button("All Day (L8h>W)", id="sched-3", classes="schedule-item")
+            yield Button("Slow Cook: HIGH 3h > LOW 6h > WARM", id="sched-1", classes="schedule-item")
+            yield Button("Quick Warm: HIGH 1h > WARM", id="sched-2", classes="schedule-item")
+            yield Button("All Day: LOW 8h > WARM", id="sched-3", classes="schedule-item")
             yield Button("Stop Schedule", id="sched-stop", classes="schedule-item")
             with Horizontal(classes="nav-row"):
                 yield Button("Menu", id="menu-btn-sched", classes="menu-btn")
