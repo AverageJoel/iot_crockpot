@@ -33,19 +33,20 @@ if TYPE_CHECKING:
 class Screen(Enum):
     """GUI screens."""
     MAIN = auto()
+    MENU = auto()
     SCHEDULE_SELECT = auto()
     SCHEDULE_BUILDER = auto()
     HISTORY = auto()
     SETTINGS = auto()
 
 
-# Screen cycle order for navigation
-SCREEN_ORDER = [
-    Screen.MAIN,
-    Screen.SCHEDULE_SELECT,
-    Screen.SCHEDULE_BUILDER,
-    Screen.HISTORY,
-    Screen.SETTINGS,
+# Screens available from menu (excludes MENU itself)
+MENU_SCREENS = [
+    (Screen.MAIN, "Main", "Temperature & controls"),
+    (Screen.SCHEDULE_SELECT, "Schedules", "Start a cooking schedule"),
+    (Screen.SCHEDULE_BUILDER, "Builder", "Create custom schedule"),
+    (Screen.HISTORY, "History", "Temperature graph"),
+    (Screen.SETTINGS, "Settings", "WiFi & display"),
 ]
 
 
@@ -136,6 +137,9 @@ class GUISimulator:
         # Settings menu state
         self._settings_index: int = 0
 
+        # Menu screen state
+        self._menu_index: int = 0
+
     # =========================================================================
     # Navigation
     # =========================================================================
@@ -147,18 +151,32 @@ class GUISimulator:
 
     def next_screen(self) -> None:
         """Cycle to next screen."""
-        idx = SCREEN_ORDER.index(self.current_screen)
-        self.current_screen = SCREEN_ORDER[(idx + 1) % len(SCREEN_ORDER)]
+        screens = [s for s, _, _ in MENU_SCREENS]
+        try:
+            idx = screens.index(self.current_screen)
+            self.current_screen = screens[(idx + 1) % len(screens)]
+        except ValueError:
+            self.current_screen = Screen.MAIN
 
     def prev_screen(self) -> None:
         """Cycle to previous screen."""
-        idx = SCREEN_ORDER.index(self.current_screen)
-        self.current_screen = SCREEN_ORDER[(idx - 1) % len(SCREEN_ORDER)]
+        screens = [s for s, _, _ in MENU_SCREENS]
+        try:
+            idx = screens.index(self.current_screen)
+            self.current_screen = screens[(idx - 1) % len(screens)]
+        except ValueError:
+            self.current_screen = Screen.MAIN
 
     def go_back(self) -> None:
         """Return to previous screen."""
         self.current_screen = self.previous_screen
         self.previous_screen = Screen.MAIN
+
+    def open_menu(self) -> None:
+        """Open the screen selection menu."""
+        self.previous_screen = self.current_screen
+        self.current_screen = Screen.MENU
+        self._menu_index = 0
 
     # =========================================================================
     # State Updates
@@ -229,6 +247,24 @@ class GUISimulator:
     # =========================================================================
     # Screen Renderers
     # =========================================================================
+
+    def _render_menu_screen(self) -> RenderableType:
+        """Render screen selection menu."""
+        lines = []
+        lines.append(Text("Menu", style=Style(color=self.theme.accent, bold=True)))
+        lines.append(Text(""))
+
+        for i, (screen, name, desc) in enumerate(MENU_SCREENS):
+            prefix = ">" if i == self._menu_index else " "
+            style = "bold" if i == self._menu_index else ""
+
+            lines.append(Text(f"{prefix} {name}", style=style))
+            lines.append(Text(f"   {desc}", style=self.theme.text_dim))
+
+        lines.append(Text(""))
+        lines.append(Text("[UP/DOWN] select  [ENTER] go", style=self.theme.text_dim))
+
+        return Align.center(Group(*lines))
 
     def _render_main_screen(self) -> RenderableType:
         """Render main screen with temperature and state buttons."""
@@ -419,7 +455,9 @@ class GUISimulator:
 
     def handle_up(self) -> None:
         """Handle UP input."""
-        if self.current_screen == Screen.SCHEDULE_SELECT:
+        if self.current_screen == Screen.MENU:
+            self._menu_index = (self._menu_index - 1) % len(MENU_SCREENS)
+        elif self.current_screen == Screen.SCHEDULE_SELECT:
             if self._schedule_list:
                 self._schedule_index = (self._schedule_index - 1) % len(self._schedule_list)
         elif self.current_screen == Screen.SCHEDULE_BUILDER:
@@ -436,7 +474,9 @@ class GUISimulator:
 
     def handle_down(self) -> None:
         """Handle DOWN input."""
-        if self.current_screen == Screen.SCHEDULE_SELECT:
+        if self.current_screen == Screen.MENU:
+            self._menu_index = (self._menu_index + 1) % len(MENU_SCREENS)
+        elif self.current_screen == Screen.SCHEDULE_SELECT:
             if self._schedule_list:
                 self._schedule_index = (self._schedule_index + 1) % len(self._schedule_list)
         elif self.current_screen == Screen.SCHEDULE_BUILDER:
@@ -463,7 +503,11 @@ class GUISimulator:
 
     def handle_enter(self) -> "Schedule | None":
         """Handle ENTER input. Returns schedule if one was selected."""
-        if self.current_screen == Screen.SCHEDULE_SELECT:
+        if self.current_screen == Screen.MENU:
+            selected_screen = MENU_SCREENS[self._menu_index][0]
+            self.set_screen(selected_screen)
+            return None
+        elif self.current_screen == Screen.SCHEDULE_SELECT:
             if self._schedule_list:
                 return self._schedule_list[self._schedule_index]
         elif self.current_screen == Screen.SCHEDULE_BUILDER:
@@ -508,6 +552,7 @@ class GUISimulator:
         """Render the complete simulated display."""
         screen_renderers = {
             Screen.MAIN: self._render_main_screen,
+            Screen.MENU: self._render_menu_screen,
             Screen.SCHEDULE_SELECT: self._render_schedule_select_screen,
             Screen.SCHEDULE_BUILDER: self._render_schedule_builder_screen,
             Screen.HISTORY: self._render_history_screen,

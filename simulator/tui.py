@@ -196,10 +196,10 @@ class CrockpotTUI:
 
         # Navigation
         commands.append("Nav: ", style="bold")
-        commands.append("[tab]", style="bold cyan")
-        commands.append("screen ", style="cyan")
+        commands.append("[m]", style="bold cyan")
+        commands.append("enu ", style="cyan")
         commands.append("[arrows]", style="bold cyan")
-        commands.append("menu  ", style="cyan")
+        commands.append("nav  ", style="cyan")
 
         # Other
         commands.append("[s]", style="bold cyan")
@@ -315,6 +315,10 @@ class CrockpotTUI:
             self.add_message(f"Sensor error {state}")
 
         # Screen navigation
+        elif cmd == "m":
+            self.gui.open_menu()
+            self.add_message("Menu")
+
         elif cmd in ("tab", "\t", "n"):
             self.gui.next_screen()
             self.add_message(f"Screen: {self.gui.current_screen.name}")
