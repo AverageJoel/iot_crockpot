@@ -60,6 +60,9 @@ class CrockpotTUI:
         display_config = DISPLAY_PRESETS.get(display_preset, DISPLAY_PRESETS["320x240"])
         self.gui = GUISimulator(display=display_config)
 
+        # Initialize GUI with schedule list
+        self.gui.set_schedule_list(PRESET_SCHEDULES)
+
     def add_message(self, msg: str) -> None:
         """Add a message to the log."""
         with self._lock:
@@ -191,18 +194,18 @@ class CrockpotTUI:
         commands.append("[h]", style="bold red")
         commands.append("igh  ", style="red")
 
-        # Schedule controls
-        commands.append("Schedule: ", style="bold")
-        commands.append("[p]", style="bold cyan")
-        commands.append("resets ", style="cyan")
-        commands.append("[s]", style="bold cyan")
-        commands.append("top  ", style="cyan")
+        # Navigation
+        commands.append("Nav: ", style="bold")
+        commands.append("[tab]", style="bold cyan")
+        commands.append("screen ", style="cyan")
+        commands.append("[arrows]", style="bold cyan")
+        commands.append("menu  ", style="cyan")
 
         # Other
+        commands.append("[s]", style="bold cyan")
+        commands.append("top ", style="cyan")
         commands.append("[x]", style="bold green")
         commands.append("port ", style="green")
-        commands.append("[e]", style="bold magenta")
-        commands.append("rror ", style="magenta")
         commands.append("[q]", style="bold")
         commands.append("uit", style="dim")
 
@@ -283,19 +286,24 @@ class CrockpotTUI:
         if cmd in ("/quit", "/q", "q"):
             return False
 
+        # State controls
         if cmd in ("/off", "o"):
+            self.simulator.stop_schedule()
             self.simulator.set_state(CrockpotState.OFF)
             self.add_message("Set state to OFF")
 
         elif cmd in ("/warm", "w"):
+            self.simulator.stop_schedule()
             self.simulator.set_state(CrockpotState.WARM)
             self.add_message("Set state to WARM")
 
         elif cmd in ("/low", "l"):
+            self.simulator.stop_schedule()
             self.simulator.set_state(CrockpotState.LOW)
             self.add_message("Set state to LOW")
 
         elif cmd in ("/high", "h"):
+            self.simulator.stop_schedule()
             self.simulator.set_state(CrockpotState.HIGH)
             self.add_message("Set state to HIGH")
 
@@ -306,22 +314,46 @@ class CrockpotTUI:
             state = "injected" if new_error else "cleared"
             self.add_message(f"Sensor error {state}")
 
-        elif cmd in ("/status",):
-            status = self.simulator.get_status()
-            self.add_message(
-                f"State: {status.state.name}, "
-                f"Temp: {status.temperature_f:.1f} F, "
-                f"Relay: {'ON' if status.relay_main else 'OFF'}"
-            )
+        # Screen navigation
+        elif cmd in ("tab", "\t", "n"):
+            self.gui.next_screen()
+            self.add_message(f"Screen: {self.gui.current_screen.name}")
+
+        elif cmd in ("shift+tab", "b"):
+            self.gui.prev_screen()
+            self.add_message(f"Screen: {self.gui.current_screen.name}")
+
+        # Menu navigation (arrow keys)
+        elif cmd in ("up", "k"):
+            self.gui.handle_up()
+
+        elif cmd in ("down", "j"):
+            self.gui.handle_down()
+
+        elif cmd in ("left", ","):
+            self.gui.handle_left()
+
+        elif cmd in ("right", "."):
+            self.gui.handle_right()
+
+        elif cmd in ("enter", ""):
+            schedule = self.gui.handle_enter()
+            if schedule:
+                self.simulator.start_schedule(schedule)
+                self.add_message(f"Started: {schedule.name}")
+            # Check if builder has a schedule ready
+            if self.gui.current_screen == Screen.SCHEDULE_BUILDER:
+                built = self.gui.get_built_schedule()
+                if built:
+                    self.simulator.start_schedule(built)
+                    self.add_message(f"Started custom schedule")
 
         # Schedule commands
         elif cmd in ("/stop", "s"):
             self.simulator.stop_schedule()
             self.add_message("Schedule stopped")
 
-        elif cmd in ("/presets", "p"):
-            self.add_message("Presets: [1]Slow Cook [2]Quick Warm [3]All Day")
-
+        # Quick schedule presets
         elif cmd == "1":
             if len(PRESET_SCHEDULES) > 0:
                 self.simulator.start_schedule(PRESET_SCHEDULES[0])
@@ -337,6 +369,10 @@ class CrockpotTUI:
                 self.simulator.start_schedule(PRESET_SCHEDULES[2])
                 self.add_message(f"Started: {PRESET_SCHEDULES[2].name}")
 
+        # View mode
+        elif cmd == "v":
+            self.cycle_view_mode()
+
         # Export command
         elif cmd in ("/export", "x"):
             if self.simulator.datalog:
@@ -348,6 +384,6 @@ class CrockpotTUI:
                 self.add_message("[red]Datalog not enabled[/]")
 
         elif cmd:
-            self.add_message(f"[red]Unknown command: {cmd}[/]")
+            self.add_message(f"[red]Unknown: {cmd}[/]")
 
         return True
