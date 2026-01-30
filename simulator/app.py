@@ -220,6 +220,23 @@ class CrockpotApp(App):
         height: 3;
         margin: 0 1;
     }
+
+    .small-btn {
+        min-width: 3;
+        width: 3;
+        height: 3;
+        margin: 0;
+    }
+
+    .spacer {
+        width: 2;
+    }
+
+    #builder-hours, #builder-mins {
+        width: 4;
+        text-align: center;
+        content-align: center middle;
+    }
     """
 
     BINDINGS = [
@@ -307,12 +324,13 @@ class CrockpotApp(App):
                 yield Button("LOW", id="build-low", classes="builder-btn")
                 yield Button("HIGH", id="build-high", classes="builder-btn")
             with Horizontal(classes="builder-row"):
-                yield Button("-", id="build-hour-down", classes="builder-btn")
-                yield Static("1h", id="builder-hours")
-                yield Button("+", id="build-hour-up", classes="builder-btn")
-                yield Button("-", id="build-min-down", classes="builder-btn")
+                yield Button("<", id="build-hour-down", classes="small-btn")
+                yield Static(" 1h ", id="builder-hours")
+                yield Button(">", id="build-hour-up", classes="small-btn")
+                yield Static(" ", classes="spacer")
+                yield Button("<", id="build-min-down", classes="small-btn")
                 yield Static("00m", id="builder-mins")
-                yield Button("+", id="build-min-up", classes="builder-btn")
+                yield Button(">", id="build-min-up", classes="small-btn")
             with Horizontal(classes="builder-row"):
                 yield Button("Add Step", id="build-add", classes="builder-btn")
                 yield Button("Clear", id="build-clear", classes="builder-btn")
