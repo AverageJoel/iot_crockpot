@@ -142,8 +142,8 @@ class CrockpotApp(App):
     /* Schedule list */
     .schedule-item {
         width: 100%;
-        padding: 1;
-        margin: 0 0 1 0;
+        height: 2;
+        margin: 0;
     }
 
     .schedule-item:hover {
