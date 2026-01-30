@@ -176,6 +176,20 @@ class CrockpotApp(App):
     .back-btn {
         margin-top: 1;
     }
+
+    /* Menu button - bottom right */
+    .menu-btn {
+        dock: bottom;
+        width: auto;
+        margin-top: 1;
+    }
+
+    #nav-row {
+        width: 100%;
+        height: 3;
+        align: right middle;
+        margin-top: 1;
+    }
     """
 
     BINDINGS = [
@@ -223,7 +237,8 @@ class CrockpotApp(App):
             with Horizontal(id="status-bar"):
                 yield Static("[green]WiFi[/]", id="wifi-status")
                 yield Static("00:00:00", id="uptime")
-            yield Button("Menu", id="menu-btn")
+            with Horizontal(id="nav-row"):
+                yield Button("Menu", id="menu-btn", classes="menu-btn")
 
         # Menu screen
         with Container(id="menu-screen", classes="screen-container hidden"):
@@ -240,14 +255,16 @@ class CrockpotApp(App):
             yield Button("Quick Warm (H1h>W)", id="sched-2", classes="schedule-item")
             yield Button("All Day (L8h>W)", id="sched-3", classes="schedule-item")
             yield Button("Stop Schedule", id="sched-stop", classes="schedule-item")
-            yield Button("< Back", id="back-schedules", classes="back-btn")
+            with Horizontal(id="nav-row"):
+                yield Button("Menu", id="menu-btn-sched", classes="menu-btn")
 
         # History screen
         with Container(id="history-screen", classes="screen-container hidden"):
             yield Static("History", classes="screen-title")
             yield Static("", id="history-graph")
             yield Static("", id="history-stats")
-            yield Button("< Back", id="back-history", classes="back-btn")
+            with Horizontal(id="nav-row"):
+                yield Button("Menu", id="menu-btn-hist", classes="menu-btn")
 
         # Settings screen
         with Container(id="settings-screen", classes="screen-container hidden"):
@@ -255,7 +272,8 @@ class CrockpotApp(App):
             yield Static("WiFi: Connected", id="setting-wifi", classes="setting-row")
             yield Static("Temp Unit: Fahrenheit", id="setting-temp", classes="setting-row")
             yield Static("Safety Limit: 300°F", id="setting-safety", classes="setting-row")
-            yield Button("< Back", id="back-settings", classes="back-btn")
+            with Horizontal(id="nav-row"):
+                yield Button("Menu", id="menu-btn-settings", classes="menu-btn")
 
         yield Footer()
 
@@ -381,7 +399,7 @@ class CrockpotApp(App):
         elif button_id == "btn-high":
             self.simulator.stop_schedule()
             self.simulator.set_state(CrockpotState.HIGH)
-        elif button_id == "menu-btn":
+        elif button_id in ("menu-btn", "menu-btn-sched", "menu-btn-hist", "menu-btn-settings"):
             self.current_screen = AppScreen.MENU
 
         # Menu screen
@@ -407,9 +425,6 @@ class CrockpotApp(App):
         elif button_id == "sched-stop":
             self.simulator.stop_schedule()
 
-        # Back buttons
-        elif button_id in ("back-schedules", "back-history", "back-settings"):
-            self.current_screen = AppScreen.MAIN
 
     def _start_schedule(self, index: int) -> None:
         if index < len(PRESET_SCHEDULES):
