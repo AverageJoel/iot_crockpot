@@ -24,7 +24,7 @@ from textual.reactive import reactive
 
 from crockpot_sim import CrockpotSimulator, CrockpotState
 from config_parser import ConfigParser
-from schedule import PRESET_SCHEDULES, Schedule
+from schedule import PRESET_SCHEDULES, Schedule, ScheduleStep
 
 SCRIPT_DIR = Path(__file__).parent
 FIRMWARE_DIR = SCRIPT_DIR.parent / "firmware"
@@ -37,6 +37,7 @@ class AppScreen(Enum):
     MAIN = auto()
     MENU = auto()
     SCHEDULES = auto()
+    BUILDER = auto()
     HISTORY = auto()
     SETTINGS = auto()
 
@@ -190,6 +191,35 @@ class CrockpotApp(App):
         align: right middle;
         margin-top: 1;
     }
+
+    /* Builder screen */
+    #builder-steps {
+        width: 100%;
+        height: 3;
+        background: #0f0f23;
+        border: round #333;
+        content-align: center middle;
+        text-align: center;
+        margin-bottom: 1;
+    }
+
+    #builder-current {
+        width: 100%;
+        text-align: center;
+        margin-bottom: 1;
+    }
+
+    .builder-row {
+        width: 100%;
+        height: 3;
+        align: center middle;
+    }
+
+    .builder-btn {
+        min-width: 10;
+        height: 3;
+        margin: 0 1;
+    }
     """
 
     BINDINGS = [
@@ -220,6 +250,12 @@ class CrockpotApp(App):
         self._running = True
         self._control_thread = threading.Thread(target=self._control_loop, daemon=True)
         self._temp_history: deque[float] = deque(maxlen=40)
+
+        # Builder state
+        self._builder_steps: list[tuple[CrockpotState, int]] = []  # (state, duration_seconds)
+        self._builder_state: CrockpotState = CrockpotState.HIGH
+        self._builder_hours: int = 1
+        self._builder_minutes: int = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -256,9 +292,33 @@ class CrockpotApp(App):
             yield Button("Slow Cook: HIGH 3h -> LOW 6h -> WARM", id="sched-1", classes="schedule-item")
             yield Button("Quick Warm: HIGH 1h -> WARM", id="sched-2", classes="schedule-item")
             yield Button("All Day: LOW 8h -> WARM", id="sched-3", classes="schedule-item")
-            yield Button("Stop Schedule", id="sched-stop", classes="schedule-item")
+            yield Button("Custom Schedule Builder", id="sched-custom", classes="schedule-item")
             with Horizontal(classes="nav-row"):
                 yield Button("Menu", id="menu-btn-sched", classes="menu-btn")
+
+        # Builder screen
+        with Container(id="builder-screen", classes="screen-container hidden"):
+            yield Static("Custom Schedule Builder", classes="screen-title")
+            yield Static("Steps: (none)", id="builder-steps")
+            yield Static("Add step:", id="builder-current")
+            with Horizontal(classes="builder-row"):
+                yield Button("OFF", id="build-off", classes="builder-btn")
+                yield Button("WARM", id="build-warm", classes="builder-btn")
+                yield Button("LOW", id="build-low", classes="builder-btn")
+                yield Button("HIGH", id="build-high", classes="builder-btn")
+            with Horizontal(classes="builder-row"):
+                yield Button("-", id="build-hour-down", classes="builder-btn")
+                yield Static("1h", id="builder-hours")
+                yield Button("+", id="build-hour-up", classes="builder-btn")
+                yield Button("-", id="build-min-down", classes="builder-btn")
+                yield Static("00m", id="builder-mins")
+                yield Button("+", id="build-min-up", classes="builder-btn")
+            with Horizontal(classes="builder-row"):
+                yield Button("Add Step", id="build-add", classes="builder-btn")
+                yield Button("Clear", id="build-clear", classes="builder-btn")
+                yield Button("Start", id="build-start", classes="builder-btn")
+            with Horizontal(classes="nav-row"):
+                yield Button("Menu", id="menu-btn-builder", classes="menu-btn")
 
         # History screen
         with Container(id="history-screen", classes="screen-container hidden"):
@@ -294,6 +354,7 @@ class CrockpotApp(App):
             AppScreen.MAIN: "main-screen",
             AppScreen.MENU: "menu-screen",
             AppScreen.SCHEDULES: "schedules-screen",
+            AppScreen.BUILDER: "builder-screen",
             AppScreen.HISTORY: "history-screen",
             AppScreen.SETTINGS: "settings-screen",
         }
@@ -401,7 +462,7 @@ class CrockpotApp(App):
         elif button_id == "btn-high":
             self.simulator.stop_schedule()
             self.simulator.set_state(CrockpotState.HIGH)
-        elif button_id in ("menu-btn", "menu-btn-sched", "menu-btn-hist", "menu-btn-settings"):
+        elif button_id in ("menu-btn", "menu-btn-sched", "menu-btn-hist", "menu-btn-settings", "menu-btn-builder"):
             self.current_screen = AppScreen.MENU
 
         # Menu screen
@@ -424,13 +485,82 @@ class CrockpotApp(App):
         elif button_id == "sched-3":
             self._start_schedule(2)
             self.current_screen = AppScreen.MAIN
-        elif button_id == "sched-stop":
-            self.simulator.stop_schedule()
+        elif button_id == "sched-custom":
+            self.current_screen = AppScreen.BUILDER
 
+        # Builder screen
+        elif button_id == "build-off":
+            self._builder_state = CrockpotState.OFF
+            self._update_builder_display()
+        elif button_id == "build-warm":
+            self._builder_state = CrockpotState.WARM
+            self._update_builder_display()
+        elif button_id == "build-low":
+            self._builder_state = CrockpotState.LOW
+            self._update_builder_display()
+        elif button_id == "build-high":
+            self._builder_state = CrockpotState.HIGH
+            self._update_builder_display()
+        elif button_id == "build-hour-up":
+            self._builder_hours = min(24, self._builder_hours + 1)
+            self._update_builder_display()
+        elif button_id == "build-hour-down":
+            self._builder_hours = max(0, self._builder_hours - 1)
+            self._update_builder_display()
+        elif button_id == "build-min-up":
+            self._builder_minutes = (self._builder_minutes + 15) % 60
+            self._update_builder_display()
+        elif button_id == "build-min-down":
+            self._builder_minutes = (self._builder_minutes - 15) % 60
+            self._update_builder_display()
+        elif button_id == "build-add":
+            duration = self._builder_hours * 3600 + self._builder_minutes * 60
+            self._builder_steps.append((self._builder_state, duration))
+            self._update_builder_display()
+        elif button_id == "build-clear":
+            self._builder_steps = []
+            self._update_builder_display()
+        elif button_id == "build-start":
+            if self._builder_steps:
+                self._start_custom_schedule()
+                self.current_screen = AppScreen.MAIN
 
     def _start_schedule(self, index: int) -> None:
         if index < len(PRESET_SCHEDULES):
             self.simulator.start_schedule(PRESET_SCHEDULES[index])
+
+    def _update_builder_display(self) -> None:
+        """Update builder screen display."""
+        # Update steps display
+        steps_widget = self.query_one("#builder-steps", Static)
+        if self._builder_steps:
+            steps_text = " -> ".join(
+                f"{state.name} {dur//3600}h{(dur%3600)//60:02d}m" if dur > 0 else state.name
+                for state, dur in self._builder_steps
+            )
+            steps_widget.update(f"Steps: {steps_text}")
+        else:
+            steps_widget.update("Steps: (none)")
+
+        # Update current selection
+        current = self.query_one("#builder-current", Static)
+        current.update(f"Add step: [{self._builder_state.name}]")
+
+        # Update hours/mins display
+        hours = self.query_one("#builder-hours", Static)
+        hours.update(f"{self._builder_hours}h")
+        mins = self.query_one("#builder-mins", Static)
+        mins.update(f"{self._builder_minutes:02d}m")
+
+    def _start_custom_schedule(self) -> None:
+        """Start the custom built schedule."""
+        steps = [
+            ScheduleStep(state=state, duration_seconds=duration)
+            for state, duration in self._builder_steps
+        ]
+        schedule = Schedule(name="Custom", steps=steps)
+        self.simulator.start_schedule(schedule)
+        self._builder_steps = []
 
     def action_show_menu(self) -> None:
         self.current_screen = AppScreen.MENU
