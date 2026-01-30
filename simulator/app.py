@@ -2,21 +2,25 @@
 """
 IoT Crockpot Simulator - Textual App with clickable GUI.
 
-Relay mapping:
-- OFF:  Both relays off
-- WARM: Relay 2 only
-- LOW:  Relay 1 only
-- HIGH: Both relays on
+Screens:
+- Main: Temperature display + state buttons
+- Menu: Screen selection
+- Schedules: Start a cooking schedule
+- History: Temperature graph over time
+- Settings: Configuration options
 """
 
 import threading
 import time
+from collections import deque
+from enum import Enum, auto
 from pathlib import Path
 
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Button, Footer, Header, Static, ProgressBar, Label
+from textual.containers import Container, Horizontal, Vertical, Center
+from textual.widgets import Button, Footer, Header, Static, ProgressBar, Label, ListView, ListItem
 from textual.binding import Binding
+from textual.reactive import reactive
 
 from crockpot_sim import CrockpotSimulator, CrockpotState
 from config_parser import ConfigParser
@@ -25,9 +29,20 @@ from schedule import PRESET_SCHEDULES, Schedule
 SCRIPT_DIR = Path(__file__).parent
 FIRMWARE_DIR = SCRIPT_DIR.parent / "firmware"
 
+# Sparkline characters
+SPARK_CHARS = "▁▂▃▄▅▆▇█"
+
+
+class AppScreen(Enum):
+    MAIN = auto()
+    MENU = auto()
+    SCHEDULES = auto()
+    HISTORY = auto()
+    SETTINGS = auto()
+
 
 class CrockpotApp(App):
-    """Crockpot simulator with clickable buttons."""
+    """Crockpot simulator with multiple screens."""
 
     CSS = """
     Screen {
@@ -35,16 +50,20 @@ class CrockpotApp(App):
         background: #1a1a2e;
     }
 
-    #main-container {
-        width: 70;
-        height: 32;
+    .screen-container {
+        width: 60;
+        height: 24;
         border: double white;
         background: #16213e;
         padding: 1 2;
-        layout: vertical;
     }
 
-    #title {
+    .hidden {
+        display: none;
+    }
+
+    /* Title */
+    .screen-title {
         width: 100%;
         text-align: center;
         text-style: bold;
@@ -52,6 +71,7 @@ class CrockpotApp(App):
         margin-bottom: 1;
     }
 
+    /* Temperature display */
     #temperature {
         width: 100%;
         height: 3;
@@ -61,201 +81,123 @@ class CrockpotApp(App):
         color: white;
         background: #0f0f23;
         border: round #333;
-        margin-bottom: 1;
     }
 
-    #relay-row {
+    /* State buttons row */
+    #state-buttons {
         width: 100%;
         height: 3;
-        align: center middle;
-        margin-bottom: 1;
-    }
-
-    .relay-box {
-        width: 20;
-        height: 3;
-        border: solid #444;
-        content-align: center middle;
-        text-align: center;
-        margin: 0 2;
-    }
-
-    .relay-on {
-        background: #2d5a27;
-        border: solid green;
-        color: white;
-    }
-
-    .relay-off {
-        background: #333;
-        border: solid #555;
-        color: #666;
-    }
-
-    #button-row {
-        width: 100%;
-        height: 5;
         align: center middle;
         margin: 1 0;
     }
 
-    Button {
-        margin: 0 1;
-        min-width: 12;
+    .state-btn {
+        min-width: 8;
         height: 3;
+        margin: 0 1;
     }
 
-    #btn-off {
-        background: #555;
-        border: tall #777;
-    }
-    #btn-off:hover {
-        background: #666;
-    }
-    #btn-off:focus {
-        text-style: bold;
-    }
-    #btn-off.selected {
-        background: #888;
-        border: tall white;
-        text-style: bold reverse;
-    }
+    #btn-off { background: #444; }
+    #btn-off.selected { background: #888; text-style: bold reverse; }
+    #btn-warm { background: #554400; color: yellow; }
+    #btn-warm.selected { background: #aa8800; text-style: bold reverse; }
+    #btn-low { background: #553300; color: orange; }
+    #btn-low.selected { background: darkorange; text-style: bold reverse; }
+    #btn-high { background: #550000; color: red; }
+    #btn-high.selected { background: #cc0000; text-style: bold reverse; }
 
-    #btn-warm {
-        background: #554400;
-        color: yellow;
-        border: tall #776600;
-    }
-    #btn-warm:hover {
-        background: #665500;
-    }
-    #btn-warm:focus {
-        text-style: bold;
-    }
-    #btn-warm.selected {
-        background: #aa8800;
-        border: tall yellow;
-        text-style: bold reverse;
-        color: black;
-    }
-
-    #btn-low {
-        background: #553300;
-        color: orange;
-        border: tall #774400;
-    }
-    #btn-low:hover {
-        background: #664400;
-    }
-    #btn-low:focus {
-        text-style: bold;
-    }
-    #btn-low.selected {
-        background: darkorange;
-        border: tall orange;
-        text-style: bold reverse;
-        color: white;
-    }
-
-    #btn-high {
-        background: #550000;
-        color: red;
-        border: tall #770000;
-    }
-    #btn-high:hover {
-        background: #660000;
-    }
-    #btn-high:focus {
-        text-style: bold;
-    }
-    #btn-high.selected {
-        background: #cc0000;
-        border: tall red;
-        text-style: bold reverse;
-        color: white;
-    }
-
+    /* Status bar */
     #status-bar {
-        dock: bottom;
         width: 100%;
         height: 1;
         margin-top: 1;
     }
 
-    #wifi-status {
-        width: 50%;
-    }
-
-    #uptime {
-        width: 50%;
-        text-align: right;
-    }
-
-    #schedule-container {
+    /* Schedule status */
+    #schedule-info {
         width: 100%;
-        height: auto;
-        margin-top: 1;
-        padding: 0 1;
-    }
-
-    #schedule-status {
-        width: 100%;
-        height: 1;
         text-align: center;
         color: cyan;
-    }
-
-    #schedule-progress {
-        width: 100%;
-        height: 1;
-        margin-top: 0;
-    }
-
-    #schedule-buttons {
-        width: 100%;
-        height: 3;
-        align: center middle;
         margin-top: 1;
     }
 
-    .schedule-btn {
-        min-width: 14;
-        height: 3;
-        margin: 0 1;
+    /* Menu button */
+    #menu-btn {
+        margin-top: 1;
+        width: 100%;
     }
 
-    #btn-schedule-stop {
-        background: #553333;
-        color: #ff6666;
-        border: tall #774444;
+    /* Menu screen */
+    .menu-item {
+        width: 100%;
+        height: 3;
+        margin: 1 0;
+        content-align: center middle;
     }
-    #btn-schedule-stop:hover {
-        background: #664444;
+
+    .menu-item:hover {
+        background: #2a2a4e;
+    }
+
+    /* Schedule list */
+    .schedule-item {
+        width: 100%;
+        padding: 1;
+        margin: 0 0 1 0;
+    }
+
+    .schedule-item:hover {
+        background: #2a2a4e;
+    }
+
+    /* History graph */
+    #history-graph {
+        width: 100%;
+        height: 3;
+        background: #0f0f23;
+        border: round #333;
+        content-align: center middle;
+        text-align: center;
+    }
+
+    #history-stats {
+        width: 100%;
+        text-align: center;
+        margin-top: 1;
+    }
+
+    /* Settings */
+    .setting-row {
+        width: 100%;
+        height: 2;
+    }
+
+    /* Back button */
+    .back-btn {
+        margin-top: 1;
     }
     """
 
     BINDINGS = [
         Binding("q", "quit", "Quit"),
-        Binding("e", "toggle_error", "Error"),
+        Binding("m", "show_menu", "Menu"),
+        Binding("escape", "go_back", "Back"),
         Binding("o", "set_off", "Off"),
         Binding("w", "set_warm", "Warm"),
         Binding("l", "set_low", "Low"),
         Binding("h", "set_high", "High"),
-        Binding("1", "schedule_1", "Slow Cook"),
-        Binding("2", "schedule_2", "Quick Warm"),
-        Binding("3", "schedule_3", "All Day"),
-        Binding("s", "stop_schedule", "Stop Schedule"),
-        Binding("x", "export_log", "Export Log"),
+        Binding("s", "stop_schedule", "Stop"),
+        Binding("x", "export_log", "Export"),
     ]
+
+    current_screen: reactive[AppScreen] = reactive(AppScreen.MAIN)
 
     def __init__(self) -> None:
         super().__init__()
 
-        # Parse config
         config_parser = ConfigParser(FIRMWARE_DIR)
         config = config_parser.parse_all()
 
-        # Create simulator
         self.simulator = CrockpotSimulator(
             safety_temp_f=config.get("CROCKPOT_SAFETY_TEMP_F", 300.0),
             control_interval_ms=config.get("CROCKPOT_CONTROL_INTERVAL_MS", 1000),
@@ -263,37 +205,57 @@ class CrockpotApp(App):
 
         self._running = True
         self._control_thread = threading.Thread(target=self._control_loop, daemon=True)
+        self._temp_history: deque[float] = deque(maxlen=40)
 
     def compose(self) -> ComposeResult:
         yield Header()
 
-        with Container(id="main-container"):
-            yield Static("IoT Crockpot Controller", id="title")
-            yield Static("70.0°F", id="temperature")
-
-            with Horizontal(id="relay-row"):
-                yield Static("RELAY 1\nOFF", id="relay1", classes="relay-box relay-off")
-                yield Static("RELAY 2\nOFF", id="relay2", classes="relay-box relay-off")
-
-            with Horizontal(id="button-row"):
-                yield Button("OFF", id="btn-off", classes="selected")
-                yield Button("WARM", id="btn-warm")
-                yield Button("LOW", id="btn-low")
-                yield Button("HIGH", id="btn-high")
-
+        # Main screen
+        with Container(id="main-screen", classes="screen-container"):
+            yield Static("Crockpot", classes="screen-title")
+            yield Static("70°F", id="temperature")
+            with Horizontal(id="state-buttons"):
+                yield Button("OFF", id="btn-off", classes="state-btn selected")
+                yield Button("WARM", id="btn-warm", classes="state-btn")
+                yield Button("LOW", id="btn-low", classes="state-btn")
+                yield Button("HIGH", id="btn-high", classes="state-btn")
+            yield Static("", id="schedule-info")
             with Horizontal(id="status-bar"):
                 yield Static("[green]WiFi[/]", id="wifi-status")
                 yield Static("00:00:00", id="uptime")
+            yield Button("Menu", id="menu-btn")
 
-            # Schedule section
-            with Container(id="schedule-container"):
-                yield Static("No schedule active", id="schedule-status")
-                yield ProgressBar(id="schedule-progress", total=100, show_eta=False)
-                with Horizontal(id="schedule-buttons"):
-                    yield Button("Slow Cook", id="btn-schedule-1", classes="schedule-btn")
-                    yield Button("Quick Warm", id="btn-schedule-2", classes="schedule-btn")
-                    yield Button("All Day", id="btn-schedule-3", classes="schedule-btn")
-                    yield Button("Stop", id="btn-schedule-stop", classes="schedule-btn")
+        # Menu screen
+        with Container(id="menu-screen", classes="screen-container hidden"):
+            yield Static("Menu", classes="screen-title")
+            yield Button("Main", id="menu-main", classes="menu-item")
+            yield Button("Schedules", id="menu-schedules", classes="menu-item")
+            yield Button("History", id="menu-history", classes="menu-item")
+            yield Button("Settings", id="menu-settings", classes="menu-item")
+
+        # Schedules screen
+        with Container(id="schedules-screen", classes="screen-container hidden"):
+            yield Static("Schedules", classes="screen-title")
+            yield Button("Slow Cook (H3h>L6h>W)", id="sched-1", classes="schedule-item")
+            yield Button("Quick Warm (H1h>W)", id="sched-2", classes="schedule-item")
+            yield Button("All Day (L8h>W)", id="sched-3", classes="schedule-item")
+            yield Button("Stop Schedule", id="sched-stop", classes="schedule-item")
+            yield Button("< Back", id="back-schedules", classes="back-btn")
+
+        # History screen
+        with Container(id="history-screen", classes="screen-container hidden"):
+            yield Static("History", classes="screen-title")
+            yield Static("", id="history-graph")
+            yield Static("", id="history-stats")
+            yield Button("< Back", id="back-history", classes="back-btn")
+
+        # Settings screen
+        with Container(id="settings-screen", classes="screen-container hidden"):
+            yield Static("Settings", classes="screen-title")
+            yield Static("WiFi: Connected", id="setting-wifi", classes="setting-row")
+            yield Static("Temp Unit: Fahrenheit", id="setting-temp", classes="setting-row")
+            yield Static("Safety Limit: 300°F", id="setting-safety", classes="setting-row")
+            yield Button("< Back", id="back-settings", classes="back-btn")
 
         yield Footer()
 
@@ -306,49 +268,46 @@ class CrockpotApp(App):
             self.simulator.control_loop()
             time.sleep(1.0)
 
+    def watch_current_screen(self, new_screen: AppScreen) -> None:
+        """React to screen changes."""
+        screen_map = {
+            AppScreen.MAIN: "main-screen",
+            AppScreen.MENU: "menu-screen",
+            AppScreen.SCHEDULES: "schedules-screen",
+            AppScreen.HISTORY: "history-screen",
+            AppScreen.SETTINGS: "settings-screen",
+        }
+
+        for screen, container_id in screen_map.items():
+            container = self.query_one(f"#{container_id}")
+            if screen == new_screen:
+                container.remove_class("hidden")
+            else:
+                container.add_class("hidden")
+
     def _update_display(self) -> None:
         status = self.simulator.get_status()
 
-        # Update temperature
+        # Record temperature history
+        self._temp_history.append(status.temperature_f)
+
+        # Update main screen elements
         temp_widget = self.query_one("#temperature", Static)
-        temp_text = f"{status.temperature_f:.1f}°F"
+        temp_text = f"{status.temperature_f:.0f}°F"
         if status.sensor_error:
-            temp_widget.update(f"[bold red]{temp_text}[/]\n[bold red blink]SENSOR ERROR[/]")
+            temp_widget.update(f"[bold red]{temp_text} ERROR[/]")
         elif status.temperature_f >= 300:
             temp_widget.update(f"[bold red]{temp_text}[/]")
         else:
             temp_widget.update(f"[bold white]{temp_text}[/]")
 
-        # Update relay indicators
-        relay1 = self.query_one("#relay1", Static)
-        relay2 = self.query_one("#relay2", Static)
-
-        if status.relay_main:
-            relay1.update("[bold]RELAY 1[/]\n[green bold]● ON[/]")
-            relay1.remove_class("relay-off")
-            relay1.add_class("relay-on")
-        else:
-            relay1.update("RELAY 1\n[dim]○ OFF[/]")
-            relay1.remove_class("relay-on")
-            relay1.add_class("relay-off")
-
-        if status.relay_aux:
-            relay2.update("[bold]RELAY 2[/]\n[green bold]● ON[/]")
-            relay2.remove_class("relay-off")
-            relay2.add_class("relay-on")
-        else:
-            relay2.update("RELAY 2\n[dim]○ OFF[/]")
-            relay2.remove_class("relay-on")
-            relay2.add_class("relay-off")
-
-        # Update button selection
+        # Update state buttons
         state_to_btn = {
             CrockpotState.OFF: "#btn-off",
             CrockpotState.WARM: "#btn-warm",
             CrockpotState.LOW: "#btn-low",
             CrockpotState.HIGH: "#btn-high",
         }
-
         for state, btn_id in state_to_btn.items():
             btn = self.query_one(btn_id, Button)
             if state == status.state:
@@ -356,47 +315,60 @@ class CrockpotApp(App):
             else:
                 btn.remove_class("selected")
 
-        # Update status bar
-        wifi = self.query_one("#wifi-status", Static)
-        wifi.update("[green]WiFi ●[/]" if status.wifi_connected else "[dim]WiFi ○[/]")
+        # Update schedule info
+        schedule_info = self.query_one("#schedule-info", Static)
+        if status.schedule_active:
+            step = status.schedule_step + 1
+            total = status.schedule_total_steps
+            remaining = status.schedule_step_remaining
+            if remaining > 0:
+                mins = remaining // 60
+                schedule_info.update(f"[cyan]{status.schedule_name}[/] {step}/{total} ({mins}m)")
+            else:
+                schedule_info.update(f"[cyan]{status.schedule_name}[/] {step}/{total}")
+        else:
+            schedule_info.update("[dim]No schedule[/]")
 
-        uptime_widget = self.query_one("#uptime", Static)
+        # Update status bar
+        uptime = self.query_one("#uptime", Static)
         h = status.uptime_seconds // 3600
         m = (status.uptime_seconds % 3600) // 60
         s = status.uptime_seconds % 60
-        uptime_widget.update(f"[dim]{h:02d}:{m:02d}:{s:02d}[/]")
+        uptime.update(f"{h:02d}:{m:02d}:{s:02d}")
 
-        # Update schedule display
-        schedule_status = self.query_one("#schedule-status", Static)
-        schedule_progress = self.query_one("#schedule-progress", ProgressBar)
+        # Update history screen if visible
+        if self.current_screen == AppScreen.HISTORY:
+            self._update_history()
 
-        if status.schedule_active:
-            step_num = status.schedule_step + 1
-            total_steps = status.schedule_total_steps
-            remaining_mins = status.schedule_step_remaining // 60
-            remaining_secs = status.schedule_step_remaining % 60
-            current_state = status.state.name
+    def _update_history(self) -> None:
+        """Update history graph."""
+        if not self._temp_history:
+            return
 
-            if status.schedule_step_remaining > 0:
-                schedule_status.update(
-                    f"[cyan]{status.schedule_name}[/] - Step {step_num}/{total_steps}: "
-                    f"[bold]{current_state}[/] ({remaining_mins}:{remaining_secs:02d} left)"
-                )
-                schedule_progress.update(progress=status.schedule_step_progress * 100)
-            else:
-                schedule_status.update(
-                    f"[cyan]{status.schedule_name}[/] - Step {step_num}/{total_steps}: "
-                    f"[bold]{current_state}[/] (indefinite)"
-                )
-                schedule_progress.update(progress=100)
-        else:
-            schedule_status.update("[dim]No schedule active - Press 1/2/3 to start[/]")
-            schedule_progress.update(progress=0)
+        temps = list(self._temp_history)
+        min_t = min(temps)
+        max_t = max(temps)
+        current = temps[-1]
+
+        # Build sparkline
+        range_t = max(max_t - min_t, 10)
+        sparkline = ""
+        for t in temps:
+            norm = (t - min_t) / range_t
+            norm = max(0, min(0.99, norm))
+            idx = int(norm * len(SPARK_CHARS))
+            sparkline += SPARK_CHARS[idx]
+
+        graph = self.query_one("#history-graph", Static)
+        graph.update(f"[cyan]{sparkline}[/]")
+
+        stats = self.query_one("#history-stats", Static)
+        stats.update(f"Now: {current:.0f}°F  Min: {min_t:.0f}°F  Max: {max_t:.0f}°F")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button clicks."""
         button_id = event.button.id
 
+        # Main screen
         if button_id == "btn-off":
             self.simulator.stop_schedule()
             self.simulator.set_state(CrockpotState.OFF)
@@ -409,58 +381,76 @@ class CrockpotApp(App):
         elif button_id == "btn-high":
             self.simulator.stop_schedule()
             self.simulator.set_state(CrockpotState.HIGH)
-        elif button_id == "btn-schedule-1":
+        elif button_id == "menu-btn":
+            self.current_screen = AppScreen.MENU
+
+        # Menu screen
+        elif button_id == "menu-main":
+            self.current_screen = AppScreen.MAIN
+        elif button_id == "menu-schedules":
+            self.current_screen = AppScreen.SCHEDULES
+        elif button_id == "menu-history":
+            self.current_screen = AppScreen.HISTORY
+        elif button_id == "menu-settings":
+            self.current_screen = AppScreen.SETTINGS
+
+        # Schedules screen
+        elif button_id == "sched-1":
             self._start_schedule(0)
-        elif button_id == "btn-schedule-2":
+            self.current_screen = AppScreen.MAIN
+        elif button_id == "sched-2":
             self._start_schedule(1)
-        elif button_id == "btn-schedule-3":
+            self.current_screen = AppScreen.MAIN
+        elif button_id == "sched-3":
             self._start_schedule(2)
-        elif button_id == "btn-schedule-stop":
+            self.current_screen = AppScreen.MAIN
+        elif button_id == "sched-stop":
             self.simulator.stop_schedule()
 
-        self._update_display()
+        # Back buttons
+        elif button_id in ("back-schedules", "back-history", "back-settings"):
+            self.current_screen = AppScreen.MAIN
 
     def _start_schedule(self, index: int) -> None:
-        """Start a preset schedule by index."""
         if index < len(PRESET_SCHEDULES):
-            schedule = PRESET_SCHEDULES[index]
-            self.simulator.start_schedule(schedule)
+            self.simulator.start_schedule(PRESET_SCHEDULES[index])
+
+    def action_show_menu(self) -> None:
+        self.current_screen = AppScreen.MENU
+
+    def action_go_back(self) -> None:
+        if self.current_screen != AppScreen.MAIN:
+            self.current_screen = AppScreen.MAIN
 
     def action_set_off(self) -> None:
+        self.simulator.stop_schedule()
         self.simulator.set_state(CrockpotState.OFF)
 
     def action_set_warm(self) -> None:
+        self.simulator.stop_schedule()
         self.simulator.set_state(CrockpotState.WARM)
 
     def action_set_low(self) -> None:
+        self.simulator.stop_schedule()
         self.simulator.set_state(CrockpotState.LOW)
 
     def action_set_high(self) -> None:
+        self.simulator.stop_schedule()
         self.simulator.set_state(CrockpotState.HIGH)
 
     def action_toggle_error(self) -> None:
         status = self.simulator.get_status()
         self.simulator.inject_sensor_error(not status.sensor_error)
 
-    def action_schedule_1(self) -> None:
-        self._start_schedule(0)
-
-    def action_schedule_2(self) -> None:
-        self._start_schedule(1)
-
-    def action_schedule_3(self) -> None:
-        self._start_schedule(2)
-
     def action_stop_schedule(self) -> None:
         self.simulator.stop_schedule()
 
     def action_export_log(self) -> None:
-        """Export the data log to CSV."""
         if self.simulator.datalog:
             filename = self.simulator.datalog.generate_filename("csv")
             export_path = Path.home() / ".crockpot" / filename
             self.simulator.datalog.to_csv(export_path)
-            self.notify(f"Log exported to {export_path}")
+            self.notify(f"Exported to {export_path}")
 
     def on_unmount(self) -> None:
         self._running = False
