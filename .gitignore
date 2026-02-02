@@ -82,3 +82,23 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+*.egg-info/
+.eggs/
+venv/
+.venv/
+
+# KiCad
+*_autosave-*
+*.kicad_pcb-bak
+*.kicad_sch-bak
+fp-info-cache
+
+# Generated 3D models (can be regenerated from .scad)
+hardware/3dmodels/*.stl
+hardware/3dmodels/*.3mf

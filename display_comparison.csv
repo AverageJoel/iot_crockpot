@@ -1,0 +1,29 @@
+Model,Size (inches),Resolution,Display Type,Touch Type,ESP32 Built-in,Approx Price (USD),Color/Mono,Notes,Source
+ESP32-2432S024R (CYD 2.4),2.4,240x320,TFT ILI9341,Resistive,Yes (WROOM-32),$10-12,Color,Smallest CYD variant same features as 2.8,AliExpress
+ESP32-2432S028R (CYD 2.8),2.8,240x320,TFT ILI9341,Resistive,Yes (WROOM-32),$10-15,Color,"Most popular ""Cheap Yellow Display"" huge community support",AliExpress/Amazon
+ESP32-2432S028C (CYD 2.8 Cap),2.8,240x320,TFT ILI9341,Capacitive,Yes (WROOM-32),$12-18,Color,Capacitive version of CYD slightly more expensive,AliExpress
+ESP32-3248S035R (CYD 3.5),3.5,320x480,TFT ST7796,Resistive,Yes (WROOM-32),$15-20,Color,Larger CYD variant more screen real estate,AliExpress/Amazon
+ESP32-3248S035C (CYD 3.5 Cap),3.5,320x480,TFT ST7796,Capacitive,Yes (WROOM-32),$18-25,Color,Capacitive 3.5" CYD best value for capacitive,AliExpress/Amazon
+Elecrow CrowPanel 2.4,2.4,240x320,TFT ILI9341,Resistive,Yes (WROOM-32),$12-15,Color,Similar to CYD good documentation,Elecrow
+Elecrow CrowPanel 2.8,2.8,240x320,TFT ILI9341,Resistive,Yes (WROOM-32),$14-18,Color,Good build quality LVGL compatible,Elecrow
+Elecrow CrowPanel 3.5,3.5,320x480,TFT ILI9488,Capacitive,Yes (WROOM-32),$25-35,Color,IPS panel better viewing angles,Elecrow
+WT32-SC01,3.5,320x480,TFT,Capacitive,Yes (WROVER-B),$25-35,Color,8MB PSRAM good for graphics,Seeed/Amazon
+WT32-SC01 Plus,3.5,320x480,TFT,Capacitive,Yes (ESP32-S3),$35-45,Color,ESP32-S3 more GPIO 16MB flash,Seeed/Amazon
+Waveshare ESP32-S3-Touch-LCD-2,2.0,240x320,TFT ST7789,Capacitive,Yes (ESP32-S3),$20-28,Color,Compact with 6-axis sensor battery charging,Waveshare
+Waveshare ESP32-S3-Touch-LCD-1.28,1.28,240x240,IPS GC9A01,Capacitive,Yes (ESP32-S3),$18-25,Color,Round display smartwatch style,Waveshare
+Waveshare ESP32-S3-Touch-LCD-1.85C,1.85,360x360,IPS Round,Capacitive,Yes (ESP32-S3),$33-48,Color,Round display built-in mic box version available,Waveshare
+Waveshare ESP32-S3-Touch-LCD-3.5,3.5,320x480,IPS,Capacitive,Yes (ESP32-S3),$35-45,Color,High quality IPS 262K colors camera interface,Waveshare
+M5Stack Dial,1.28,240x240,TFT Round,Capacitive,Yes (ESP32-S3),$35-40,Color,Rotary encoder RFID RTC buzzer premium build,M5Stack
+Elecrow Rotary 1.28,1.28,240x240,IPS Round,Capacitive,Yes (ESP32-S3),$29-38,Color,Rotary knob input ambient lighting,Elecrow
+Elecrow Rotary 2.1,2.1,480x480,IPS Round,Capacitive,Yes (ESP32-S3),$36-44,Color,Larger round display rotary input,Elecrow
+LILYGO T-RGB 2.1,2.1,480x480,IPS Round,Capacitive,Yes (ESP32-S3),$40-50,Color,High resolution round display RGB lighting,LILYGO/AliExpress
+Standalone ILI9341 2.8 + Touch,2.8,240x320,TFT,Resistive,No,$8-12,Color,Requires separate ESP32 more wiring,AliExpress
+Standalone ILI9341 2.8 Cap,2.8,240x320,TFT,Capacitive (FT6336),No,$12-18,Color,Requires separate ESP32 FT6336 touch controller,AliExpress
+SSD1306 OLED 0.96,0.96,128x64,OLED,None,No,$3-5,Mono (White/Blue/Yellow),No touch very cheap crisp display,AliExpress
+SSD1306 OLED 1.3,1.3,128x64,OLED,None,No,$4-7,Mono (White/Blue),No touch larger OLED option,AliExpress
+SH1106 OLED 1.3,1.3,128x64,OLED,None,No,$5-8,Mono (White/Blue),Alternative OLED driver to SSD1306,AliExpress
+OLED 2.4 SSD1309,2.4,128x64,OLED,None,No,$15-25,Mono (Yellow/White),Larger OLED no touch,Various
+Custom OLED + Touch Overlay,2.0-2.4,128x64,OLED,Capacitive (custom),No,$40-60+,Mono,Requires custom overlay very limited availability,Raystar/Orient
+Waveshare ESP32-C6-Touch-AMOLED-1.8,1.8,360x360,AMOLED,Capacitive,Yes (ESP32-C6),$29-44,Color,AMOLED beautiful colors mic+speaker IMU RTC,Waveshare
+Waveshare ESP32-S3-Touch-LCD-4.3,4.3,800x480,IPS,Capacitive,Yes (ESP32-S3),$45-60,Color,Large display CAN RS485 I2C TF card slot,Waveshare
+Elecrow CrowPanel 4.3,4.3,480x272,TFT RGB,Capacitive,Yes,$35-45,Color,Good for home automation dashboards,Elecrow

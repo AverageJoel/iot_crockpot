@@ -3,18 +3,32 @@
 IoT Crockpot Simulator - Main entry point.
 
 A Python TUI simulator that mimics the ESP32-C3 crockpot firmware behavior.
+Includes a GUI simulator that shows what the actual device display will look like.
 Watches firmware source files and updates when constants change.
 
 Usage:
     python main.py
 
 Controls:
-    o - Turn off
-    w - Set to WARM
-    l - Set to LOW
-    h - Set to HIGH
-    e - Toggle sensor error
-    s - Show status
+    State:
+        o - Turn off
+        w - Set to WARM
+        l - Set to LOW
+        h - Set to HIGH
+
+    View:
+        v - Cycle view mode (DEVICE / DEBUG / SPLIT)
+        1 - Main screen
+        2 - Settings screen
+        3 - WiFi screen
+        4 - Info screen
+        b - Go back to previous screen
+        SPACE - Dismiss message overlay
+
+    Debug:
+        e - Toggle sensor error
+        s - Show status in log
+
     q - Quit
 """
 
@@ -76,6 +90,8 @@ except ImportError:
 from config_parser import ConfigParser
 from crockpot_sim import CrockpotSimulator, CrockpotState
 from tui import CrockpotTUI
+from gui_sim import Screen
+from remote_control import RemoteControlManager
 
 
 # Find firmware directory relative to this script
@@ -126,6 +142,12 @@ class SimulatorApp:
         # Create TUI
         self.tui = CrockpotTUI(self.simulator)
 
+        # Remote control (Telegram + Web)
+        self.remote_control = RemoteControlManager(
+            simulator=self.simulator,
+            on_message=self._on_remote_message,
+        )
+
         # File watcher
         self.observer = None
 
@@ -136,6 +158,10 @@ class SimulatorApp:
     def _on_safety_shutoff(self, reason: str) -> None:
         """Callback when safety shutoff triggers."""
         self.tui.add_message(f"[red bold]SAFETY SHUTOFF: {reason}[/]")
+
+    def _on_remote_message(self, message: str) -> None:
+        """Callback for messages from remote control services."""
+        self.tui.add_message(message)
 
     def _on_config_reload(self, path: Path) -> None:
         """Callback when config file changes."""
@@ -178,24 +204,56 @@ class SimulatorApp:
         """Handle a keypress. Returns False to quit."""
         if key == 'q':
             return False
+
+        # State controls
         elif key == 'o':
             self.simulator.set_state(CrockpotState.OFF)
             self.tui.add_message("Set state to OFF")
+            self.tui.gui.show_message("OFF", is_error=False)
         elif key == 'w':
             self.simulator.set_state(CrockpotState.WARM)
             self.tui.add_message("Set state to WARM")
+            self.tui.gui.show_message("WARM", is_error=False)
         elif key == 'l':
             self.simulator.set_state(CrockpotState.LOW)
             self.tui.add_message("Set state to LOW")
+            self.tui.gui.show_message("LOW", is_error=False)
         elif key == 'h':
             self.simulator.set_state(CrockpotState.HIGH)
             self.tui.add_message("Set state to HIGH")
+            self.tui.gui.show_message("HIGH", is_error=False)
+
+        # View mode toggle
+        elif key == 'v':
+            self.tui.cycle_view_mode()
+
+        # GUI screen navigation (1-4)
+        elif key == '1':
+            self.tui.set_gui_screen(Screen.MAIN)
+        elif key == '2':
+            self.tui.set_gui_screen(Screen.SETTINGS)
+        elif key == '3':
+            self.tui.set_gui_screen(Screen.WIFI)
+        elif key == '4':
+            self.tui.set_gui_screen(Screen.INFO)
+
+        # Back key (escape or b)
+        elif key == 'b':
+            self.tui.gui_go_back()
+
+        # Error injection
         elif key == 'e':
             status = self.simulator.get_status()
             new_error = not status.sensor_error
             self.simulator.inject_sensor_error(new_error)
             state = "injected" if new_error else "cleared"
             self.tui.add_message(f"Sensor error {state}")
+            if new_error:
+                self.tui.gui.show_message("SENSOR ERROR", is_error=True)
+            else:
+                self.tui.gui.dismiss_message()
+
+        # Status (debug)
         elif key == 's':
             status = self.simulator.get_status()
             self.tui.add_message(
@@ -203,6 +261,11 @@ class SimulatorApp:
                 f"Temp: {status.temperature_f:.1f} F, "
                 f"Relay: {'ON' if status.relay_main else 'OFF'}"
             )
+
+        # Dismiss message overlay
+        elif key == ' ':
+            self.tui.gui.dismiss_message()
+
         return True
 
     def run(self) -> None:
@@ -216,13 +279,16 @@ class SimulatorApp:
         # Set up file watcher
         self._setup_file_watcher()
 
+        # Start remote control services (Telegram + Web)
+        self.remote_control.start()
+
         # Start control loop thread
         control_thread = threading.Thread(target=self._control_loop_thread, daemon=True)
         control_thread.start()
 
         try:
             with Live(self.tui.render(), refresh_per_second=4, console=self.console) as live:
-                self.tui.add_message("Press: [bold]o[/]=OFF [bold]w[/]=WARM [bold]l[/]=LOW [bold]h[/]=HIGH [bold]e[/]=error [bold]q[/]=quit")
+                self.tui.add_message("[bold]v[/]=view [bold]1-4[/]=screen [bold]o/w/l/h[/]=state [bold]q[/]=quit")
 
                 while self.running:
                     # Check for keypress
@@ -243,6 +309,9 @@ class SimulatorApp:
             # Restore terminal (Unix only)
             if sys.platform != "win32":
                 _restore_terminal()
+
+            # Stop remote control
+            self.remote_control.stop()
 
             if self.observer:
                 self.observer.stop()
