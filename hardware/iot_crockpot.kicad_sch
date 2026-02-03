@@ -1312,6 +1312,155 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "Device:Polyfuse"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "F"
+				(at -2.54 0 90)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "Polyfuse"
+				(at 2.54 0 90)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 1.27 -5.08 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" "~"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "Resettable fuse, polymeric positive temperature coefficient"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_keywords" "resettable fuse PTC PPTC polyfuse polyswitch"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_fp_filters" "*polyfuse* *PTC*"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "Polyfuse_0_1"
+				(polyline
+					(pts
+						(xy -1.524 2.54) (xy -1.524 1.524) (xy 1.524 -1.524) (xy 1.524 -2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(rectangle
+					(start -0.762 2.54)
+					(end 0.762 -2.54)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 2.54) (xy 0 -2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "Polyfuse_1_1"
+				(pin passive line
+					(at 0 3.81 270)
+					(length 1.27)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -3.81 90)
+					(length 1.27)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "Device:R_Small_US"
 			(pin_numbers
 				(hide yes)
@@ -3036,6 +3185,16 @@
 		)
 		(uuid d95977cf-e33b-4536-8d06-434b81cb877c)
 	)
+	(text "120VAC INPUT"
+		(exclude_from_sim no)
+		(at 33.02 88.9 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "1ed6b3d0-3a89-4da4-a3f2-d0b8399c22bb")
+	)
 	(text "IoT Crockpot Controller\n\nThis schematic is a placeholder.\nComponents to be added:\n- ESP32 module\n- Temperature sensor (TBD)\n- Relay/SSR module\n- OLED display (optional)\n- Power supply circuit\n- USB programming interface"
 		(exclude_from_sim no)
 		(at 71.628 47.498 0)
@@ -3106,16 +3265,16 @@
 		(uuid "5f776c1a-2174-4d59-b7a0-b143ee81999c")
 	)
 	(junction
+		(at 152.4 88.9)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "608dcee9-1367-4456-857e-2813efbbd653")
+	)
+	(junction
 		(at 181.61 148.59)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "703217fb-e6c9-45a7-bd19-b678ab004ff1")
-	)
-	(junction
-		(at 152.4 88.9)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "8fb5a711-276b-4a23-a939-2d451437fe6c")
 	)
 	(junction
 		(at 228.6 120.65)
@@ -3175,7 +3334,7 @@
 	)
 	(wire
 		(pts
-			(xy 152.4 91.44) (xy 152.4 88.9)
+			(xy 152.4 86.36) (xy 152.4 88.9)
 		)
 		(stroke
 			(width 0)
@@ -3195,16 +3354,6 @@
 	)
 	(wire
 		(pts
-			(xy 52.07 93.98) (xy 52.07 90.17)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "1262510f-3dfb-4db9-89b2-1d7810ba2bab")
-	)
-	(wire
-		(pts
 			(xy 152.4 101.6) (xy 152.4 104.14)
 		)
 		(stroke
@@ -3212,6 +3361,16 @@
 			(type default)
 		)
 		(uuid "15645514-95f5-4d10-b1fd-3ff96cb00b3d")
+	)
+	(wire
+		(pts
+			(xy 43.18 90.17) (xy 58.42 90.17)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1856f9b8-15e1-407e-8cc1-776b09d62594")
 	)
 	(wire
 		(pts
@@ -3225,6 +3384,16 @@
 	)
 	(wire
 		(pts
+			(xy 149.86 88.9) (xy 152.4 88.9)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "26cc9310-f9bc-4f87-86e6-eef3d729a807")
+	)
+	(wire
+		(pts
 			(xy 88.9 90.17) (xy 88.9 91.44)
 		)
 		(stroke
@@ -3235,16 +3404,6 @@
 	)
 	(wire
 		(pts
-			(xy 152.4 88.9) (xy 139.7 88.9)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "2b8c7f71-fd8b-45c6-b2ee-64fe3483e26d")
-	)
-	(wire
-		(pts
 			(xy 190.5 83.82) (xy 196.85 83.82)
 		)
 		(stroke
@@ -3252,6 +3411,16 @@
 			(type default)
 		)
 		(uuid "305b271f-b9be-4397-aa65-287d093bea87")
+	)
+	(wire
+		(pts
+			(xy 43.18 93.98) (xy 43.18 90.17)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "305e58e6-9d7d-404c-adb9-3d6eee75d26e")
 	)
 	(wire
 		(pts
@@ -3365,6 +3534,16 @@
 	)
 	(wire
 		(pts
+			(xy 152.4 88.9) (xy 152.4 91.44)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5ae428b1-c9a8-49a9-85bd-48e11f8e01a8")
+	)
+	(wire
+		(pts
 			(xy 73.66 90.17) (xy 88.9 90.17)
 		)
 		(stroke
@@ -3435,16 +3614,6 @@
 	)
 	(wire
 		(pts
-			(xy 152.4 86.36) (xy 152.4 88.9)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "6ee1a6dd-a385-48e0-a587-567ca9f1633e")
-	)
-	(wire
-		(pts
 			(xy 234.95 120.65) (xy 228.6 120.65)
 		)
 		(stroke
@@ -3492,16 +3661,6 @@
 			(type default)
 		)
 		(uuid "78b7304c-d2e5-4590-acb8-54e12ba9f988")
-	)
-	(wire
-		(pts
-			(xy 52.07 90.17) (xy 58.42 90.17)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "7b464417-d64c-4e1e-95ed-ff462b00d957")
 	)
 	(wire
 		(pts
@@ -3575,7 +3734,7 @@
 	)
 	(wire
 		(pts
-			(xy 49.53 96.52) (xy 52.07 96.52)
+			(xy 40.64 96.52) (xy 43.18 96.52)
 		)
 		(stroke
 			(width 0)
@@ -3625,7 +3784,7 @@
 	)
 	(wire
 		(pts
-			(xy 52.07 96.52) (xy 52.07 100.33)
+			(xy 43.18 96.52) (xy 43.18 100.33)
 		)
 		(stroke
 			(width 0)
@@ -3645,7 +3804,7 @@
 	)
 	(wire
 		(pts
-			(xy 52.07 100.33) (xy 73.66 100.33)
+			(xy 43.18 100.33) (xy 73.66 100.33)
 		)
 		(stroke
 			(width 0)
@@ -3682,16 +3841,6 @@
 			(type default)
 		)
 		(uuid "b699e27b-cbd9-496c-b629-851e408fb326")
-	)
-	(wire
-		(pts
-			(xy 49.53 93.98) (xy 52.07 93.98)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "b9c3e6e0-ddca-4453-8c57-217e31b7c1a1")
 	)
 	(wire
 		(pts
@@ -3755,6 +3904,16 @@
 	)
 	(wire
 		(pts
+			(xy 139.7 88.9) (xy 142.24 88.9)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "dab3ad14-e012-4743-bc35-a0abd7fdd88a")
+	)
+	(wire
+		(pts
 			(xy 181.61 148.59) (xy 184.15 148.59)
 		)
 		(stroke
@@ -3772,6 +3931,16 @@
 			(type default)
 		)
 		(uuid "e95289d5-f4fb-436f-8298-c203afa5f5c7")
+	)
+	(wire
+		(pts
+			(xy 40.64 93.98) (xy 43.18 93.98)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "eb5b5f2e-09d5-439a-a630-72d2d45392ff")
 	)
 	(wire
 		(pts
@@ -3872,6 +4041,26 @@
 			(type default)
 		)
 		(uuid "ffe29c82-4b44-4926-97fb-b0f4c793816e")
+	)
+	(label "NEUTRAL"
+		(at 44.45 100.33 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "69fabd95-30f7-4147-b5a5-e636299ad776")
+	)
+	(label "HOT"
+		(at 44.45 90.17 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "99f0ed5c-af50-498a-8d40-58d4fc351f41")
 	)
 	(symbol
 		(lib_id "power:GND")
@@ -4359,15 +4548,15 @@
 	)
 	(symbol
 		(lib_id "Connector:Screw_Terminal_01x02")
-		(at 44.45 96.52 180)
+		(at 43.18 64.77 180)
 		(unit 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
-		(uuid "34c83e02-60ef-4f9f-8529-e2b9079e7dcc")
-		(property "Reference" "J1"
-			(at 41.91 96.5201 0)
+		(uuid "2e27d063-bb17-4614-b2a8-1e1d75719fb6")
+		(property "Reference" "J2"
+			(at 40.64 64.7701 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4376,7 +4565,7 @@
 			)
 		)
 		(property "Value" "Screw_Terminal_01x02"
-			(at 50.038 100.584 0)
+			(at 48.768 68.834 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4385,7 +4574,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 44.45 96.52 0)
+			(at 43.18 64.77 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4394,7 +4583,7 @@
 			)
 		)
 		(property "Datasheet" "~"
-			(at 44.45 96.52 0)
+			(at 43.18 64.77 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4403,7 +4592,76 @@
 			)
 		)
 		(property "Description" "Generic screw terminal, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)"
-			(at 44.45 96.52 0)
+			(at 43.18 64.77 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "9e008c2c-57fe-4538-915e-be239dccbbb5")
+		)
+		(pin "1"
+			(uuid "68ba1afb-3228-459f-84e9-41bbe8b34879")
+		)
+		(instances
+			(project "iot_crockpot"
+				(path "/00000000-0000-0000-0000-000000000001"
+					(reference "J2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:Screw_Terminal_01x02")
+		(at 35.56 96.52 180)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "34c83e02-60ef-4f9f-8529-e2b9079e7dcc")
+		(property "Reference" "J1"
+			(at 33.02 95.25 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Screw_Terminal_01x02"
+			(at 41.148 100.584 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 35.56 96.52 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 35.56 96.52 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic screw terminal, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)"
+			(at 35.56 96.52 0)
 			(effects
 				(font
 					(size 1.27 1.27)
@@ -4713,6 +4971,76 @@
 			(project "iot_crockpot"
 				(path "/00000000-0000-0000-0000-000000000001"
 					(reference "#PWR010")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Fuse")
+		(at 58.42 74.93 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "4d29a7ef-d64c-488e-bb6f-f96d0cdb71e3")
+		(property "Reference" "F2"
+			(at 57.1499 72.39 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Fuse"
+			(at 59.6899 72.39 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 58.42 76.708 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 58.42 74.93 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Fuse"
+			(at 58.42 74.93 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "0f7af064-b6e9-4133-ab52-400aefb4fba3")
+		)
+		(pin "1"
+			(uuid "ed9dacb4-dee5-48ae-b8c9-68a26f852b1c")
+		)
+		(instances
+			(project "iot_crockpot"
+				(path "/00000000-0000-0000-0000-000000000001"
+					(reference "F2")
 					(unit 1)
 				)
 			)
@@ -5918,6 +6246,94 @@
 			(project ""
 				(path "/00000000-0000-0000-0000-000000000001"
 					(reference "R1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:Polyfuse")
+		(at 146.05 88.9 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "e83f3f06-0219-457a-9673-40d7ef979d8d")
+		(property "Reference" "F3"
+			(at 144.78 84.074 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Value" "1.5A"
+			(at 144.018 86.106 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+		(property "Footprint" "Fuse:Fuse_1206_3216Metric_Pad1.42x1.75mm_HandSolder"
+			(at 151.13 87.63 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 146.05 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Resettable fuse, polymeric positive temperature coefficient"
+			(at 146.05 88.9 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Manufacturer" "Littelfuse"
+			(at 146.05 88.9 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Part No" "1206L075THYR"
+			(at 146.05 88.9 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "daa8d3f8-7c2e-4574-815a-9f49649a4a17")
+		)
+		(pin "1"
+			(uuid "9ed5e911-7fe9-433b-9b05-bc05e84528d2")
+		)
+		(instances
+			(project ""
+				(path "/00000000-0000-0000-0000-000000000001"
+					(reference "F3")
 					(unit 1)
 				)
 			)
