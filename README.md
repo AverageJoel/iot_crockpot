@@ -1,55 +1,105 @@
 # IoT Crockpot Controller
 
-An open-source, internet-enabled crockpot controller with local physical interface and remote Telegram control. Features a custom PCB designed in KiCad with modular architecture for future expansion.
+An open-source, internet-enabled crockpot controller with local touchscreen interface and remote Telegram control. Features a two-board architecture with a CYD display module and custom power control PCB.
 
 ## Features
 
 - **Remote Control via Telegram** - Control your crockpot from anywhere
-- **Local Display Interface** - OLED + buttons or touchscreen (TBD)
-- **Temperature Monitoring** - Real-time temperature tracking
-- **Safety Features** - Auto-shutoff on high temperature, watchdog timer
+- **3.5" Capacitive Touchscreen** - Full-color UI on ESP32-3248S035C (CYD)
+- **K-Type Thermocouple** - Accurate temperature monitoring via MAX31855
+- **Safety Features** - Independent power board MCU with auto-shutoff, watchdog
 - **Modular Design** - Easy to add Blynk, Home Assistant, or custom app
+
+## Architecture
+
+The system uses a two-board design connected by two cables:
+
+```
+┌─────────────────────────────────────┐      ┌─────────────────────────────────┐
+│         CYD Display Board           │      │         Power Board             │
+│       (ESP32-3248S035C)             │      │                                 │
+│                                     │      │  ┌─────────┐                    │
+│  ┌─────────────────────────────┐    │      │  │ STM32   │◄── I2C Slave       │
+│  │  3.5" Capacitive Touch LCD  │    │      │  │  MCU    │                    │
+│  │        320x480 ST7796       │    │      │  └────┬────┘                    │
+│  └─────────────────────────────┘    │      │       │                         │
+│                                     │      │       ├──► Relay/SSR            │
+│  ESP32-WROOM-32                     │      │       │                         │
+│   • WiFi / Telegram                 │      │       └──► MAX31855 (SPI)       │
+│   • UI / State Management           │      │            K-Type Thermocouple  │
+│   • I2C Master                      │      │                                 │
+│                                     │      │  ┌─────────┐                    │
+│  P1: VIN ◄──────── 5V ──────────────│◄─────│──┤ HLK-PM01│◄── AC Mains        │
+│      GND ◄──────── GND ─────────────│◄─────│──┤  PSU    │                    │
+│                                     │      │  └─────────┘                    │
+│  CN1: IO22 ◄─────── SCL ────────────│◄────►│                                 │
+│       IO27 ◄─────── SDA ────────────│◄────►│       3.3V from CYD powers      │
+│       3.3V ─────── 3.3V ────────────│─────►│       the STM32 MCU             │
+│       GND ◄──────── GND ────────────│◄─────│                                 │
+└─────────────────────────────────────┘      └─────────────────────────────────┘
+```
+
+### Cable Connections
+
+| Cable | CYD Connector | Pins | Purpose |
+|-------|---------------|------|---------|
+| Power | P1 (4-pin 1.25mm JST) | VIN, GND | 5V power from power board to CYD |
+| Control | CN1 (4-pin 1.25mm JST) | IO22, IO27, 3.3V, GND | I2C bus + 3.3V to power board MCU |
+
+### Why Two MCUs?
+
+The CYD (ESP32-3248S035C) has very limited GPIO - only IO22 and IO27 are usable. By adding an STM32 on the power board as an I2C slave:
+- CYD handles WiFi, Telegram, touchscreen UI
+- STM32 handles relay control, temperature sensing, local safety logic
+- Power board can fail-safe independently if CYD crashes
+- Clean isolation between mains power and display electronics
 
 ## Project Structure
 
 ```
 iot_crockpot/
-├── firmware/          # ESP-IDF firmware source code
+├── firmware/          # ESP-IDF firmware for CYD (ESP32)
 │   ├── main/          # Application source files
 │   ├── CMakeLists.txt # Build configuration
 │   └── sdkconfig.defaults
 ├── hardware/          # KiCad PCB design files
-│   ├── *.kicad_pro    # KiCad project
-│   ├── *.kicad_sch    # Schematic
+│   ├── *.kicad_sch    # Schematic (power board)
 │   ├── *.kicad_pcb    # PCB layout
+│   ├── cyd_enclosure.scad  # 3D printable enclosure
 │   └── production/    # Generated Gerbers, BOM
+├── simulator/         # Python simulator for development
 ├── docs/              # Documentation
-│   ├── wiring.md      # Development wiring guide
-│   ├── telegram_setup.md
-│   └── assembly.md    # PCB assembly instructions
 └── README.md
 ```
 
 ## Hardware
 
-- **MCU**: Seeed XIAO ESP32-C3 (RISC-V, WiFi/BLE)
-- **Temperature Sensor**: MAX31855 thermocouple IC (K-type)
-- **Relays**: 2x G5LE-1 via 2N7002 MOSFETs
-- **Display** (Optional): SSD1306 OLED (I2C)
-- **Power**: 5V USB or external supply
+### CYD Display Board (Off-the-shelf)
+- **Module**: ESP32-3248S035C (Cheap Yellow Display)
+- **Display**: 3.5" 320x480 TFT with capacitive touch (GT911)
+- **MCU**: ESP32-WROOM-32
+- **Connectors**: P1 (power), CN1 (I2C)
+
+### Power Board (Custom PCB)
+- **MCU**: STM32 (I2C slave)
+- **Temperature**: MAX31855 + K-type thermocouple (SPI)
+- **Output**: SSR/Relay for crockpot heating element
+- **Power Supply**: HLK-PM01 (AC-DC 5V)
+- **Provides**: 5V to CYD, receives 3.3V back for STM32
 
 ## Getting Started
 
 ### Prerequisites
 
-1. Install [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/get-started/) (v5.0+)
+1. Install [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/) (v5.0+)
 2. Install [KiCad](https://www.kicad.org/) (v7.0+) for hardware design
+3. STM32 toolchain (STM32CubeIDE or arm-none-eabi-gcc)
 
-### Building Firmware
+### Building CYD Firmware (ESP32)
 
 ```bash
 cd firmware
-idf.py set-target esp32c3
+idf.py set-target esp32
 idf.py menuconfig  # Configure WiFi credentials
 idf.py build
 idf.py flash
@@ -73,27 +123,18 @@ Configure via `idf.py menuconfig`:
 | `/high` | Set to high |
 | `/help` | List commands |
 
-## Architecture
+## I2C Command Protocol
 
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                           ESP32-C3                                       │
-│                                                                          │
-│  ┌────────────────────────────────────────────────────────────────────┐  │
-│  │                      Core Logic Layer                              │  │
-│  │  crockpot.c - State machine, business logic                        │  │
-│  │  temperature.c - Sensor driver                                     │  │
-│  │  relay.c - Relay/SSR control                                       │  │
-│  └────────────────────────────────────────────────────────────────────┘  │
-│                                ▲                                         │
-│          ┌─────────────────────┼─────────────────────┐                   │
-│          │                     │                     │                   │
-│  ┌───────┴───────┐    ┌────────┴────────┐   ┌───────┴───────┐           │
-│  │   Telegram    │    │  Local Display  │   │    Future:    │           │
-│  │   (Remote)    │    │  OLED + Buttons │   │  Blynk / App  │           │
-│  └───────────────┘    └─────────────────┘   └───────────────┘           │
-└──────────────────────────────────────────────────────────────────────────┘
-```
+The CYD communicates with the power board STM32 via I2C. Proposed register map:
+
+| Register | R/W | Description |
+|----------|-----|-------------|
+| 0x00 | R | Status (state, error flags) |
+| 0x01 | R | Temperature MSB |
+| 0x02 | R | Temperature LSB |
+| 0x03 | R/W | Relay state (OFF/WARM/LOW/HIGH) |
+| 0x04 | R | Firmware version |
+| 0x10 | W | Command register |
 
 ## Safety Considerations
 
@@ -108,13 +149,16 @@ Configure via `idf.py menuconfig`:
 ## Development Status
 
 - [x] Project structure
-- [x] Core state machine
-- [x] Telegram bot interface
-- [x] Local display framework
-- [x] MAX31855 temperature sensor driver
-- [x] KiCad schematic
-- [ ] PCB layout
-- [ ] OLED display driver
+- [ ] Core state machine
+- [ ] Telegram bot interface
+- [ ] CYD touchscreen UI
+- [ ] Python simulator
+- [ ] KiCad schematic (power board)
+- [ ] CYD enclosure design (OpenSCAD)
+- [ ] Power board PCB layout
+- [ ] STM32 I2C slave firmware
+- [ ] MAX31855 SPI driver (STM32)
+- [ ] I2C master integration (CYD)
 - [ ] Testing and validation
 
 ## Contributing
