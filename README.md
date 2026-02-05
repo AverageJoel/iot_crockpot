@@ -81,11 +81,15 @@ iot_crockpot/
 - **Connectors**: P1 (power), CN1 (I2C)
 
 ### Power Board (Custom PCB)
-- **MCU**: STM32 (I2C slave)
+- **MCU**: STM32G031F6P6 (TSSOP-20, I2C slave, 125°C rated)
 - **Temperature**: MAX31855 + K-type thermocouple (SPI)
-- **Output**: SSR/Relay for crockpot heating element
-- **Power Supply**: HLK-PM01 (AC-DC 5V)
+- **Output**: Omron G5LE-1 relay (SPDT, 10A)
+- **Power Supply**: HLK-5M05 (AC-DC 5V 5W)
+- **Input Protection**: 0.5A fuse + MOV (10D561K)
+- **Connectors**: 1.25mm JST GH for CYD cables, Phoenix Contact screw terminals for mains
 - **Provides**: 5V to CYD, receives 3.3V back for STM32
+
+See [docs/hardware_decisions.md](docs/hardware_decisions.md) for component selection rationale and LCSC part numbers.
 
 ## Getting Started
 
