@@ -133,12 +133,10 @@
 	(net 43 "unconnected-(J5-Pin_1-Pad1)")
 	(net 44 "unconnected-(J5-Pin_2-Pad2)")
 	(net 45 "unconnected-(J5-Pin_3-Pad3)")
-	(net 46 "unconnected-(J6-GND-Pad5)")
-	(net 47 "unconnected-(J6-SWO-Pad6)")
-	(net 48 "unconnected-(J6-SWDIO-Pad2)")
-	(net 49 "unconnected-(J6-SWCLK-Pad4)")
-	(net 50 "unconnected-(J6-~{RESET}-Pad3)")
-	(net 51 "unconnected-(J6-VCC-Pad1)")
+	(net 46 "unconnected-(J6-SWO-Pad6)")
+	(net 47 "unconnected-(J6-SWDIO-Pad2)")
+	(net 48 "unconnected-(J6-SWCLK-Pad4)")
+	(net 49 "unconnected-(J6-~{RESET}-Pad3)")
 	(footprint "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
 		(layer "F.Cu")
 		(uuid "20390d9c-52aa-41b8-bdcd-7082adae0e15")
@@ -804,7 +802,7 @@
 			(at -1.27 0.635)
 			(size 0.7874 0.7874)
 			(layers "F.Cu" "F.Mask")
-			(net 51 "unconnected-(J6-VCC-Pad1)")
+			(net 18 "+3V3")
 			(pinfunction "VCC")
 			(pintype "power_in")
 			(uuid "e1869fc8-3802-427b-9d0a-4d79bc6f40bb")
@@ -813,7 +811,7 @@
 			(at -1.27 -0.635)
 			(size 0.7874 0.7874)
 			(layers "F.Cu" "F.Mask")
-			(net 48 "unconnected-(J6-SWDIO-Pad2)")
+			(net 47 "unconnected-(J6-SWDIO-Pad2)")
 			(pinfunction "SWDIO")
 			(pintype "bidirectional")
 			(uuid "42b34f02-dc1d-4f37-97cf-5310977d7ffe")
@@ -822,7 +820,7 @@
 			(at 0 0.635)
 			(size 0.7874 0.7874)
 			(layers "F.Cu" "F.Mask")
-			(net 50 "unconnected-(J6-~{RESET}-Pad3)")
+			(net 49 "unconnected-(J6-~{RESET}-Pad3)")
 			(pinfunction "~{RESET}")
 			(pintype "open_collector")
 			(uuid "9f5653f5-76e5-4505-8f4f-07c33532d7b8")
@@ -831,7 +829,7 @@
 			(at 0 -0.635)
 			(size 0.7874 0.7874)
 			(layers "F.Cu" "F.Mask")
-			(net 49 "unconnected-(J6-SWCLK-Pad4)")
+			(net 48 "unconnected-(J6-SWCLK-Pad4)")
 			(pinfunction "SWCLK")
 			(pintype "output")
 			(uuid "48bcb70e-45c4-4490-a28d-761dbecfb071")
@@ -840,7 +838,7 @@
 			(at 1.27 0.635)
 			(size 0.7874 0.7874)
 			(layers "F.Cu" "F.Mask")
-			(net 46 "unconnected-(J6-GND-Pad5)")
+			(net 16 "GND")
 			(pinfunction "GND")
 			(pintype "power_in")
 			(uuid "057e986c-0ba8-4213-8a1c-3f71277dc7ae")
@@ -849,7 +847,7 @@
 			(at 1.27 -0.635)
 			(size 0.7874 0.7874)
 			(layers "F.Cu" "F.Mask")
-			(net 47 "unconnected-(J6-SWO-Pad6)")
+			(net 46 "unconnected-(J6-SWO-Pad6)")
 			(pinfunction "SWO")
 			(pintype "input")
 			(uuid "11fcfc1f-7b6c-4077-8a5f-96d5d4eb5976")
@@ -891,7 +889,7 @@
 	(footprint "Varistor:RV_Rect_V25S440P_L26.5mm_W8.2mm_P12.7mm"
 		(layer "F.Cu")
 		(uuid "30fc89da-718f-400d-a01c-497ed39d5a91")
-		(at 137.3 89 -90)
+		(at 144.3 92.9 -90)
 		(descr "Varistor, V25S440P, https://www.littelfuse.com/media?resourcetype=datasheets&itemid=b410c42c-51d1-460e-b1d9-d105d93c9679&filename=littelfuse-varistor-ultramov25s-datasheet")
 		(tags "varistor")
 		(property "Reference" "RV1"
@@ -907,7 +905,7 @@
 			)
 		)
 		(property "Value" "Varistor"
-			(at 1.7 6.5 270)
+			(at 2.15 6.35 270)
 			(unlocked yes)
 			(layer "F.Fab")
 			(uuid "7a3a5316-d1be-42d2-94ed-5a6d69be4061")
@@ -1349,11 +1347,11 @@
 	(footprint "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal"
 		(layer "F.Cu")
 		(uuid "47bd387f-0912-460d-ade9-7efaf3cba14c")
-		(at 106.6275 101 -90)
+		(at 103.9275 118.1 -90)
 		(descr "Terminal Block Phoenix MKDS-1,5-2, 2 pins, pitch 5mm, size 10x9.8mm, drill diameter 1.3mm, pad diameter 2.6mm, http://www.farnell.com/datasheets/100425.pdf, script-generated using https://gitlab.com/kicad/libraries/kicad-footprint-generator/-/tree/master/scripts/TerminalBlock_Phoenix")
 		(tags "THT Terminal Block Phoenix MKDS-1,5-2 pitch 5mm size 10x9.8mm drill 1.3mm pad 2.6mm")
 		(property "Reference" "J3"
-			(at 2.5 -6.32 90)
+			(at 8.6 1.4275 90)
 			(layer "F.SilkS")
 			(uuid "23c8243e-043c-4d36-8506-13a3fb0780a3")
 			(effects
@@ -2256,7 +2254,7 @@
 	(footprint "Converter_ACDC:Converter_ACDC_Hi-Link_HLK-5Mxx"
 		(layer "F.Cu")
 		(uuid "5f3189a2-1ab2-4245-8005-f6ade3d9fa7d")
-		(at 121.3525 108.1)
+		(at 114.4525 111)
 		(descr "ACDC-Converter, 5W, Hi-Link, HLK-5Mxx, THT, https://h.hlktech.com/download/ACDC%E7%94%B5%E6%BA%90%E6%A8%A1%E5%9D%975W%E7%B3%BB%E5%88%97/1/%E6%B5%B7%E5%87%8C%E7%A7%915W%E7%B3%BB%E5%88%97%E7%94%B5%E6%BA%90%E6%A8%A1%E5%9D%97%E8%A7%84%E6%A0%BC%E4%B9%A6V2.8.pdf, generated with kicad-footprint-generator StandardBox_generator.py")
 		(tags "ACDC-Converter 5W THT Hi-Link board mount module")
 		(property "Reference" "PS1"
@@ -3449,7 +3447,7 @@
 	(footprint "Relay_THT:Relay_SPDT_Omron-G5LE-1"
 		(layer "F.Cu")
 		(uuid "8f05a6f5-d4e8-4ee3-af7d-47acf5534cc1")
-		(at 170.25 102.9725)
+		(at 161.2 106.2725)
 		(descr "Omron Relay SPDT, http://www.omron.com/ecb/products/pdf/en-g5le.pdf")
 		(tags "Omron Relay SPDT")
 		(property "Reference" "K1"
@@ -3822,11 +3820,11 @@
 	(footprint "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal"
 		(layer "F.Cu")
 		(uuid "9a0d2623-09c0-45b1-a835-f5b1be420ed8")
-		(at 106.6275 86.9 -90)
+		(at 103.8275 105.4 -90)
 		(descr "Terminal Block Phoenix MKDS-1,5-2, 2 pins, pitch 5mm, size 10x9.8mm, drill diameter 1.3mm, pad diameter 2.6mm, http://www.farnell.com/datasheets/100425.pdf, script-generated using https://gitlab.com/kicad/libraries/kicad-footprint-generator/-/tree/master/scripts/TerminalBlock_Phoenix")
 		(tags "THT Terminal Block Phoenix MKDS-1,5-2 pitch 5mm size 10x9.8mm drill 1.3mm pad 2.6mm")
 		(property "Reference" "J1"
-			(at 2.5 -6.32 90)
+			(at -4 2.6275 90)
 			(layer "F.SilkS")
 			(uuid "446e471e-42e5-4ca1-b99c-f4388e795e2e")
 			(effects
@@ -4197,7 +4195,7 @@
 	(footprint "Fuses:Fuseholder_Clip-5x20mm_Littelfuse_111_Inline_P20.00x5.00mm_D1.05mm_Horizontal_with_3D_body"
 		(layer "F.Cu")
 		(uuid "a61f314c-80ca-4073-ba5a-c195910d5a18")
-		(at 122.1 80.8)
+		(at 102 95.6)
 		(descr "Fuseholder Clips, 5x20mm Cylinder Fuse, Pins Inline, Horizontal, Littelfuse 111, https://m.littelfuse.com/~/media/electronics/datasheets/fuse_clips/littelfuse_fuse_clip_111_519_datasheet.pdf.pdf")
 		(tags "fuse clip open")
 		(property "Reference" "F1"
@@ -5158,7 +5156,7 @@
 	(footprint "Relay_THT:Relay_SPDT_Omron-G5LE-1"
 		(layer "F.Cu")
 		(uuid "db078284-c61a-44c2-a6d5-d94bb8e40afa")
-		(at 188.3 102.9725)
+		(at 178.9 106.3725)
 		(descr "Omron Relay SPDT, http://www.omron.com/ecb/products/pdf/en-g5le.pdf")
 		(tags "Omron Relay SPDT")
 		(property "Reference" "K2"
@@ -6031,7 +6029,6 @@
 			)
 		)
 		(property ki_fp_filters "Connector*:*_1x??_*")
-		(path "/3b25d604-dd6c-4484-bee3-d5e92d76de8b")
 		(sheetname "/")
 		(sheetfile "iot_crockpot.kicad_sch")
 		(attr smd)
@@ -6396,11 +6393,11 @@
 	(footprint "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal"
 		(layer "F.Cu")
 		(uuid "f5b04dd6-9be6-4f40-bf21-748329c1ab4f")
-		(at 106.7275 115.7 -90)
+		(at 193.2275 116.6 -90)
 		(descr "Terminal Block Phoenix MKDS-1,5-2, 2 pins, pitch 5mm, size 10x9.8mm, drill diameter 1.3mm, pad diameter 2.6mm, http://www.farnell.com/datasheets/100425.pdf, script-generated using https://gitlab.com/kicad/libraries/kicad-footprint-generator/-/tree/master/scripts/TerminalBlock_Phoenix")
 		(tags "THT Terminal Block Phoenix MKDS-1,5-2 pitch 5mm size 10x9.8mm drill 1.3mm pad 2.6mm")
 		(property "Reference" "J2"
-			(at 2.5 -6.32 90)
+			(at -4.5 0.5275 90)
 			(layer "F.SilkS")
 			(uuid "7378716f-9b2c-4f0b-b304-2134220dee64")
 			(effects
@@ -6821,7 +6818,6 @@
 			)
 		)
 		(property ki_fp_filters "Connector*:*_1x??_*")
-		(path "/6971be44-9f6a-4f61-9e48-e4f2e6106df2")
 		(sheetname "/")
 		(sheetfile "iot_crockpot.kicad_sch")
 		(attr smd)
