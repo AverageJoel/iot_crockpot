@@ -27,6 +27,9 @@ fp-info-cache
 *.swo
 *~
 
+# Claude Code local settings
+.claude/
+
 # Prerequisites
 *.d
 
