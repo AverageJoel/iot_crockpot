@@ -272,6 +272,184 @@ LCSC doesn't stock pre-made cables. Order from:
 | Gate-source cap | 100nF 0402/0603 | (search) | 1 |
 | UART series resistors | 1K 0402/0603 | (search) | 2 |
 
+## Architecture Revision Under Consideration (Feb 2026)
+
+Considering replacing the two-board CYD + STM32 design with a single-board approach using a bare ESP32-S3-WROOM module and a standalone SPI display.
+
+### Problem with CYD Approach
+
+The CYD (ESP32-3248S035C) has almost no free GPIO — only TX/RX on the P1 connector are available. This forced a two-MCU architecture (CYD + STM32) with UART protocol, bootloader flashing, and bus contention protection — significant complexity for a simple relay + thermocouple project.
+
+### Proposed New Architecture
+
+Single custom PCB with:
+- **MCU**: ESP32-S3-WROOM (bare module, ~33 usable GPIOs)
+- **Display**: 3.5" IPS SPI module with ST7796 controller + capacitive touch (lcdwiki.com MSP3525/3526)
+- **No STM32** — ESP32-S3 handles everything directly (WiFi, display, relay, thermocouple)
+
+### Display Module: 3.5" IPS SPI ST7796 (MSP3525/3526)
+
+14-pin interface:
+
+| Pin | Label | Interface | Function |
+|-----|-------|-----------|----------|
+| 1 | VCC | Power | 3.3V |
+| 2 | GND | Power | Ground |
+| 3 | LCD_CS | SPI | LCD chip select |
+| 4 | LCD_RST | GPIO | LCD reset |
+| 5 | LCD_RS | GPIO | Command/data select (DC) |
+| 6 | SDI(MOSI) | SPI | Shared SPI data in |
+| 7 | SCK | SPI | Shared SPI clock |
+| 8 | LED | GPIO | Backlight control |
+| 9 | SDO(MISO) | SPI | Shared SPI data out |
+| 10 | CTP_SCL | I2C | Touch I2C clock |
+| 11 | CTP_RST | GPIO | Touch reset |
+| 12 | CTP_SDA | I2C | Touch I2C data |
+| 13 | CTP_INT | GPIO | Touch interrupt |
+| 14 | SD_CS | SPI | SD card chip select |
+
+LCD and SD card share the SPI bus. Touch uses a separate I2C bus.
+
+**Key specs:** ST7796U/S controller, FT6336U capacitive touch (I2C, 2-point), 320x480 IPS, 16.7M colors, 300 cd/m², 5V input (onboard level shifters). Module size ~55.5 x 98.0 mm.
+
+### Why ST7796 and Not ILI9488
+
+Several similar 3.5" SPI displays use the ILI9488 controller instead. Avoid these:
+
+| Feature | ST7796 | ILI9488 |
+|---|---|---|
+| **SPI 16-bit color (RGB565)** | Yes | **No** — 18/24-bit only over SPI |
+| **Bytes per pixel (SPI)** | 2 | 3 (33% slower) |
+| **MISO tristate when CS high** | Yes | **No** — causes SPI bus conflicts |
+| **Shared SPI with SD card** | Works fine | Problematic without workaround |
+| **Max SPI clock** | 80 MHz | ~60 MHz |
+
+The ILI9488's lack of 16-bit SPI color and broken MISO tristate make it a poor choice for a shared SPI bus design (LCD + SD card + MAX31855 thermocouple all on one bus).
+
+### Display Sourcing
+
+All ST7796 + capacitive touch modules below share the same 14-pin interface and are electrically interchangeable. LCDWIKI (MSP3525/3526) is the OEM reference design; the others are resellers or clones.
+
+LCSC does not stock assembled display modules.
+
+| Source | Price | Shipping | Link |
+|--------|-------|----------|------|
+| **Hosyond (Amazon)** | ~$15-17 | Prime | [Amazon B0CMD7Y55M](https://www.amazon.com/Hosyond-320x480-Capacitive-ST7796U-Mega2560/dp/B0CMD7Y55M) |
+| **Elecrow** | ~$16.90 | Varies | [elecrow.com](https://www.elecrow.com/3-5-ips-spi-lcd-capacitive-touch-module-st7796-driver-320-480-resolution.html) |
+| **Waveshare** | ~$18.99 | Direct or Amazon | [waveshare.com](https://www.waveshare.com/3.5inch-capacitive-touch-lcd.htm) |
+| **AliExpress generics** | ~$8-15 | 2-4 weeks | Search "3.5 ST7796 SPI capacitive touch" (verify not ILI9488) |
+| **ProtoSupplies** | ~$19.95 | US domestic | [protosupplies.com](https://protosupplies.com/product/ips-35-st7796/) |
+
+Documentation/examples:
+- [Elecrow wiki](https://www.elecrow.com/wiki/3.5-inch_IPS_SPI_LCD_Capacitive_Touch_Display_Module_With_ST7796_Driver-320x480_Resolution_Arduino_Compatible.html) (ESP32, STM32, Arduino examples)
+- [Waveshare wiki](https://www.waveshare.com/wiki/3.5inch_Capacitive_Touch_LCD) (ESP32, Pico, RPi examples)
+
+### MCU Comparison
+
+| | XIAO ESP32-C3 | XIAO ESP32-S3 | Bare ESP32-S3-WROOM |
+|---|---|---|---|
+| **Usable GPIOs** | 11 | 13 | ~33 |
+| **Pins needed** | 15 | 15 | 15 |
+| **Verdict** | Not enough (-4) | Barely fits with tricks (-2) | Plenty (+18 spare) |
+| **UART debug** | Sacrificed | Sacrificed | Available |
+| **WiFi** | 2.4GHz, single-core | 2.4GHz, dual-core | 2.4GHz, dual-core |
+| **USB** | CH340 serial | Native USB-OTG | Native USB-OTG |
+| **Cost** | ~$5 | ~$8 | ~$3 (module only) |
+| **PCB effort** | Plug-in | Plug-in | Full breakout needed |
+
+### ESP32 Module Comparison (Bare Modules)
+
+Evaluated which ESP32 variant to use for the single-board design:
+
+| | **ESP32-WROOM-32E** | **ESP32-S3-WROOM-1** | **ESP32-C6-WROOM-1** |
+|---|---|---|---|
+| **Usable GPIOs** | ~25 | ~36 | ~22 |
+| **Spare after project** | ~10 | ~20 | ~7 |
+| **CPU** | Dual-core Xtensa LX6 | Dual-core Xtensa LX7 | Single-core RISC-V |
+| **Native USB** | No (needs CH340/CP2102) | Yes (OTG + Serial/JTAG) | Serial/JTAG only |
+| **WiFi** | 802.11n | 802.11n | 802.11ax (WiFi 6) |
+| **LCSC price (qty 1)** | ~$5 | ~$5.30 | ~$5 |
+| **LCSC price (bulk)** | ~$2.55 | ~$3.46 | ~$3.24 |
+| **Maturity** | Most mature | Mature, well supported | Newer, smaller community |
+
+ESP32-C3 rejected — too tight on GPIOs (same problem as XIAO).
+ESP32-S2 rejected — single-core (risky for WiFi + LVGL), being phased out.
+
+**Decision: ESP32-S3-WROOM-1-N4R2** (4MB flash, 2MB PSRAM). Native USB eliminates the need for a USB-UART bridge chip. Dual-core gives headroom for WiFi + display. Plenty of spare GPIOs.
+
+- LCSC: [ESP32-S3-WROOM-1-N4R2 (C2913203)](https://www.lcsc.com/product-detail/C2913203.html)
+
+### ESP32-S3 USB & Debugging
+
+The ESP32-S3 has a built-in USB Serial/JTAG controller — no external USB-UART bridge chip needed. GPIO19 (D-) and GPIO20 (D+) connect directly to a USB-C connector.
+
+**USB circuit (per Espressif hardware design guidelines):**
+```
+ESP32-S3                          USB-C Connector
+GPIO19 (D-) ──[22Ω]──┬────────── D-
+                      (C to GND, optional footprint)
+GPIO20 (D+) ──[22Ω]──┬────────── D+
+                      (C to GND, optional footprint)
+```
+
+This provides:
+- Serial programming/flashing
+- Serial monitor (printf debugging)
+- JTAG debugging (built-in, no external adapter needed)
+
+ESP32 uses JTAG, not SWD (SWD is ARM Cortex-M specific). The built-in USB-JTAG is sufficient for most development. Dedicated JTAG pins (GPIO44/45/47/48) are also available for external adapters if needed.
+
+Reference design: [ESP32-S3 Hardware Design Guidelines - Schematic Checklist](https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32s3/schematic-checklist.html)
+
+### Pin Budget (15 signals required)
+
+| Signal | Bus | Notes |
+|--------|-----|-------|
+| SPI SCK | SPI (shared) | LCD + SD card + MAX31855 |
+| SPI MOSI | SPI (shared) | |
+| SPI MISO | SPI (shared) | |
+| LCD_CS | GPIO | |
+| LCD_RS/DC | GPIO | |
+| LCD_RST | GPIO | Could tie to 3.3V via RC to save a pin |
+| LED (backlight) | GPIO | Could tie to 3.3V (always on) to save a pin |
+| SD_CS | GPIO | |
+| I2C SDA | I2C | Capacitive touch |
+| I2C SCL | I2C | Capacitive touch |
+| CTP_RST | GPIO | Could tie to 3.3V to save a pin |
+| CTP_INT | GPIO | Could poll instead to save a pin |
+| MAX31855_CS | GPIO | Thermocouple SPI chip select |
+| Relay | GPIO | SSR/relay drive |
+| (spare) | — | ESP32-S3-WROOM has ~18 pins remaining |
+
+### Benefits Over Current CYD Design
+
+- **One MCU** instead of two — eliminates STM32, UART protocol, bootloader complexity
+- **One board** instead of two — simpler assembly, lower cost
+- **No bus contention** — no CH340 fighting STM32 on shared UART
+- **No backfeed protection needed** — no P-FET circuit required (USB powers ESP32 directly)
+- **Full GPIO flexibility** — 18+ spare pins for expansion (buzzer, LEDs, extra sensors)
+- **Single firmware** — one codebase, one flash target
+
+### Trade-offs
+
+- Lose CYD's pre-built form factor and enclosure
+- More PCB design work (ESP32 antenna keep-out, USB-C, boot/reset buttons)
+- Lose independent fail-safe MCU (mitigated by ESP32 watchdog timer)
+
+### Decision Status
+
+**Decided: ESP32-S3-WROOM-1-N4R2 single-board design.**
+
+### References
+
+- Display (OEM reference): https://www.lcdwiki.com/3.5inch_IPS_SPI_Module_ST7796
+- ESP32-S3 hardware design guidelines: https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32s3/schematic-checklist.html
+- ESP32-S3 JTAG debugging: https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/api-guides/jtag-debugging/index.html
+- ESP32-S3 USB Serial/JTAG: https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/api-guides/usb-serial-jtag-console.html
+- ESP32-S3 pin reference: https://www.atomic14.com/2023/11/21/esp32-s3-pins
+- XIAO ESP32-C3: https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/
+- XIAO ESP32-S3: https://wiki.seeedstudio.com/xiao_esp32s3_getting_started/
+
 ## References
 
 - CYD Pinout: https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display/blob/main/PINS.md
