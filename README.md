@@ -1,189 +1,194 @@
 # IoT Crockpot Controller
 
-An open-source, internet-enabled crockpot controller with local touchscreen interface and remote Telegram control. Features a two-board architecture connected by a single cable: a CYD display module and custom power control PCB communicating over UART.
+An open-source, internet-enabled crockpot controller with a local touchscreen UI and remote Telegram control. Built on a custom single-board design around the ESP32-S3-WROOM-1-N4R2 and a 3.5" IPS capacitive touch display.
 
 ## Features
 
-- **Remote Control via Telegram** - Control your crockpot from anywhere
-- **3.5" Capacitive Touchscreen** - Full-color UI on ESP32-3248S035C (CYD)
-- **K-Type Thermocouple** - Accurate temperature monitoring via MAX31855
-- **Safety Features** - Independent power board MCU with auto-shutoff, watchdog
-- **Modular Design** - Easy to add Blynk, Home Assistant, or custom app
+- **Remote Control via Telegram** — Control and monitor from anywhere; automatic safety alerts sent to Telegram on shutoff events
+- **3.5" IPS Capacitive Touchscreen** — Full-color LVGL UI with OFF/WARM/LOW/HIGH controls, temperature arc, and multi-screen navigation
+- **K-Type Thermocouple** — Accurate temperature monitoring via MAX31855
+- **Safety System** — Auto-shutoff at 300°F, persistent sensor-error shutoff, task watchdog timer, relay fails to OFF on any fault
+- **NVS Configuration** — WiFi credentials and Telegram token stored in non-volatile flash; configurable via `idf.py menuconfig`
 
 ## Architecture
 
-The system uses a two-board design connected by a single 4-pin JST cable (P1):
+Single custom PCB — ESP32-S3 handles everything directly:
 
 ```
-┌─────────────────────────────────────┐      ┌─────────────────────────────────┐
-│         CYD Display Board           │      │         Power Board             │
-│       (ESP32-3248S035C)             │      │                                 │
-│                                     │      │  ┌─────────┐                    │
-│  ┌─────────────────────────────┐    │      │  │ STM32   │◄── UART            │
-│  │  3.5" Capacitive Touch LCD  │    │      │  │  MCU    │                    │
-│  │        320x480 ST7796       │    │      │  └────┬────┘                    │
-│  └─────────────────────────────┘    │      │       │                         │
-│                                     │      │       ├──► Relay/SSR            │
-│  ESP32-WROOM-32                     │      │       │                         │
-│   • WiFi / Telegram                 │      │       └──► MAX31855 (SPI)       │
-│   • UI / State Management           │      │            K-Type Thermocouple  │
-│   • UART to power board             │      │                                 │
-│                                     │      │  ┌─────────┐                    │
-│  P1: VIN ◄──────── 5V ──────────────│◄─────│──┤HLK-5M05 │◄── AC Mains       │
-│      TX  ────────► RX (PA10) ───────│─────►│──┤  PSU    │                    │
-│      RX  ◄──────── TX (PA9) ────────│◄─────│  └─────────┘                    │
-│      GND ◄──────── GND ─────────────│◄─────│                                 │
-│                                     │      │  AP2112K-3.3 LDO (5V→3.3V)     │
-│                                     │      │  Powers STM32 + MAX31855        │
-└─────────────────────────────────────┘      └─────────────────────────────────┘
+                    ┌───────────────────────────────────────┐
+                    │        ESP32-S3-WROOM-1-N4R2          │
+                    │                                       │
+   USB-C ──────────►│ GPIO19/20 (USB Serial/JTAG)           │
+                    │                                       │
+   3.5" Display ───►│ SPI2: SCK/MOSI/MISO + LCD_CS/DC/RST  │
+   FT6336U Touch ──►│ I2C:  SDA/SCL + CTP_RST/INT          │
+   Backlight PWM ───►│ GPIO47 (LCD_BL)                      │
+                    │                                       │
+   MAX31855 TC ─────►│ SPI2: MISO/SCK + TC_CS (GPIO16)      │
+   Relay/SSR ───────►│ GPIO17                               │
+                    │                                       │
+                    │  WiFi 802.11n ──────────────► Internet│
+                    └───────────────────────────────────────┘
+
+Power: AC Mains → HLK-5M05 (5V) → AP2112K (3.3V) → ESP32 + Display + TC
 ```
 
-### Cable Connection
-
-| Cable | CYD Connector | Pins | Purpose |
-|-------|---------------|------|---------|
-| P1 | P1 (4-pin 1.25mm JST) | VIN, TX, RX, GND | 5V power + UART communication |
-
-### Why Two MCUs?
-
-The CYD (ESP32-3248S035C) has very limited GPIO - only TX/RX on the P1 connector are available for inter-board communication. By adding an STM32 on the power board:
-- CYD handles WiFi, Telegram, touchscreen UI
-- STM32 handles relay control, temperature sensing, local safety logic
-- Power board can fail-safe independently if CYD crashes
-- Clean isolation between mains power and display electronics
+See [docs/hardware_decisions.md](docs/hardware_decisions.md) for the full design rationale and component selection.
 
 ## Project Structure
 
 ```
 iot_crockpot/
-├── firmware/          # ESP-IDF firmware for CYD (ESP32)
-│   ├── main/          # Application source files
-│   ├── CMakeLists.txt # Build configuration
-│   └── sdkconfig.defaults
-├── hardware/          # KiCad PCB design files
-│   ├── *.kicad_sch    # Schematic (power board)
-│   ├── *.kicad_pcb    # PCB layout
-│   ├── cyd_enclosure.scad  # 3D printable enclosure
-│   └── production/    # Generated Gerbers, BOM
-├── simulator/         # Python simulator for development
-├── docs/              # Documentation
-└── README.md
+├── firmware/
+│   ├── main/
+│   │   ├── main.c              # Entry point, boot log, task creation
+│   │   ├── crockpot.c/.h       # Core state machine (OFF/WARM/LOW/HIGH)
+│   │   ├── temperature.c/.h    # MAX31855 SPI driver, thermocouple reading
+│   │   ├── relay.c/.h          # GPIO relay/SSR control
+│   │   ├── wifi.c/.h           # WiFi connection management
+│   │   ├── telegram.c/.h       # Telegram bot (long-poll, commands, alerts)
+│   │   ├── nvs_config.c/.h     # NVS read/write helpers
+│   │   ├── display.c/.h        # LVGL init, lvgl_port setup
+│   │   ├── display_driver.c/.h # ST7796 SPI driver (esp_lcd)
+│   │   ├── touch_driver.c/.h   # FT6336U I2C driver (esp_lcd_touch)
+│   │   ├── spi_bus.c/.h        # Shared SPI2 bus init
+│   │   ├── gui.c/.h            # LVGL screens and widgets
+│   │   ├── Kconfig.projbuild   # GPIO and WiFi/Telegram config options
+│   │   └── idf_component.yml   # LVGL + esp_lcd component dependencies
+│   ├── CMakeLists.txt
+│   └── sdkconfig.defaults      # Default config (fonts, watchdog, etc.)
+├── hardware/                   # KiCad PCB design (in progress)
+│   ├── *.kicad_sch
+│   ├── *.kicad_pcb
+│   └── production/
+├── docs/                       # Design docs and guides
+│   ├── firmware_architecture.md
+│   ├── firmware_plan.md
+│   ├── hardware_decisions.md
+│   ├── telegram_setup.md
+│   ├── wiring.md
+│   └── assembly.md
+└── simulator/                  # Python simulator (partial)
 ```
 
 ## Hardware
 
-### CYD Display Board (Off-the-shelf)
-- **Module**: ESP32-3248S035C (Cheap Yellow Display)
-- **Display**: 3.5" 320x480 TFT with capacitive touch (GT911)
-- **MCU**: ESP32-WROOM-32
-- **Connector**: P1 (power + UART)
-
-### Power Board (Custom PCB)
-- **MCU**: STM32G031F6P6 (TSSOP-20, UART to CYD, 125°C rated)
-- **Temperature**: MAX31855 + K-type thermocouple (SPI)
-- **Output**: Omron G5LE-1 relay (SPDT, 10A)
-- **Power Supply**: HLK-5M05 (AC-DC 5V 5W)
-- **LDO**: AP2112K-3.3TRG1 (5V→3.3V for STM32 + MAX31855)
-- **Input Protection**: 0.5A fuse + MOV (10D561K)
-- **5V Backfeed Protection**: P-FET (AO3401) pass transistor prevents USB 5V from backfeeding into HLK-5M05
-- **UART Protection**: 1K series resistors on TX/RX lines limit bus contention current with CYD's CH340
-- **Connectors**: 1.25mm JST GH for CYD cable, Phoenix Contact screw terminals for mains
-- **Provides**: 5V to CYD; local 3.3V from onboard LDO
-
-See [docs/hardware_decisions.md](docs/hardware_decisions.md) for component selection rationale and LCSC part numbers.
+| Component | Part | Notes |
+|-----------|------|-------|
+| MCU | ESP32-S3-WROOM-1-N4R2 | 4MB flash, 2MB PSRAM, LCSC C2913203 |
+| Display | 3.5" IPS SPI, ST7796 controller | 480×320, 16.7M colors |
+| Touch | FT6336U (on display module) | I2C, 2-point capacitive |
+| Thermocouple | MAX31855 + K-type probe | SPI, ±2°C accuracy |
+| Relay | Omron G5LE-1 (10A SPDT) | NO contact, fail-safe OFF |
+| Power supply | HLK-5M05 | AC-DC, 5V 5W |
+| 3.3V LDO | AP2112K-3.3TRG1 | 5V→3.3V for ESP32 and peripherals |
+| Input protection | 0.5A slow-blow fuse + MOV | Per HLK-5M05 datasheet |
 
 ## Getting Started
 
 ### Prerequisites
 
-1. Install [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/) (v5.0+)
-2. Install [KiCad](https://www.kicad.org/) (v7.0+) for hardware design
-3. STM32 toolchain (STM32CubeIDE or arm-none-eabi-gcc)
+- [ESP-IDF v5.2+](https://docs.espressif.com/projects/esp-idf/en/latest/esp32s3/get-started/)
 
-### Building CYD Firmware (ESP32)
+### Build and Flash
 
 ```bash
 cd firmware
-idf.py set-target esp32
-idf.py menuconfig  # Configure WiFi credentials
+idf.py set-target esp32s3
+idf.py menuconfig        # Configure WiFi, Telegram token, GPIO pins
 idf.py build
-idf.py flash
+idf.py flash monitor
 ```
 
-### Configuration
+### Configuration (`idf.py menuconfig` → *IoT Crockpot*)
 
-Configure via `idf.py menuconfig`:
-- WiFi SSID and password
-- Telegram bot token (see [docs/telegram_setup.md](docs/telegram_setup.md))
-- GPIO pin assignments
+| Setting | Where | Default |
+|---------|-------|---------|
+| WiFi SSID / Password | IoT Crockpot → WiFi | (blank) |
+| Telegram bot token | IoT Crockpot → Telegram | (blank) |
+| Allowed Telegram chat ID | IoT Crockpot → Telegram | (blank = any) |
+| All GPIO pin assignments | IoT Crockpot → SPI Bus / Display / Touch / Relay | See table below |
+
+Credentials are saved to NVS on first boot and persist across reflashes that don't erase NVS.
+
+### Default GPIO Assignments
+
+| Signal | GPIO | Notes |
+|--------|------|-------|
+| SPI SCK | 12 | Shared: display + MAX31855 |
+| SPI MOSI | 11 | |
+| SPI MISO | 13 | |
+| LCD CS | 10 | ST7796 |
+| LCD DC | 9 | |
+| LCD RST | 8 | |
+| LCD BL | 47 | PWM backlight |
+| Touch SDA | 5 | FT6336U I2C |
+| Touch SCL | 4 | |
+| Touch RST | 6 | |
+| Touch INT | 7 | |
+| MAX31855 CS | 16 | Thermocouple |
+| Relay | 17 | SSR/relay, active-high |
+| USB D- | 19 | Fixed, native USB |
+| USB D+ | 20 | Fixed, native USB |
 
 ## Telegram Commands
 
 | Command | Description |
 |---------|-------------|
-| `/status` | Current state and temperature |
+| `/status` | Current state, temperature, uptime, WiFi |
 | `/off` | Turn off |
 | `/warm` | Set to warm |
 | `/low` | Set to low |
 | `/high` | Set to high |
 | `/help` | List commands |
 
-## UART Command Protocol
+Safety events (temperature limit, sensor error) automatically send an alert to the configured chat ID without requiring a command.
 
-The CYD communicates with the power board STM32 via UART (P1 connector TX/RX pins). Packet format:
+See [docs/telegram_setup.md](docs/telegram_setup.md) for bot creation and configuration steps.
 
-```
-[START] [CMD] [LEN] [PAYLOAD...] [CHECKSUM]
- 0xAA    1B    1B    0-255 bytes    XOR
-```
+## Safety
 
-| Command | Direction | Description |
-|---------|-----------|-------------|
-| 0x00 | ESP→STM | Get status (state, error flags) |
-| 0x01 | ESP→STM | Get temperature |
-| 0x03 | ESP→STM | Set relay state (OFF/WARM/LOW/HIGH) |
-| 0x04 | ESP→STM | Get firmware version |
-| 0x10 | ESP→STM | Command (reboot, enter bootloader, etc.) |
-| 0x80+ | STM→ESP | Response / async alert |
+- Auto-shutoff above 300°F (configurable in source)
+- Persistent sensor error shutoff (10 consecutive bad readings while heating)
+- Relay wired normally-open — de-energizes to OFF on any fault, power loss, or firmware crash
+- Task watchdog timer: control loop must tick every second or the chip resets
+- Safety alerts sent via Telegram on any automatic shutoff
 
-## Safety Considerations
-
-- **Mains Isolation**: Relay/SSR handles high voltage, isolated from ESP32
-- **Watchdog Timer**: Auto-reset on system hang
-- **Temperature Ceiling**: Auto-shutoff above safe threshold (300°F default)
-- **Fail-Safe**: Any error condition → state = OFF
-- **Physical Override**: Local interface works without network
-
-**WARNING**: This project involves mains voltage. Only attempt if you have electrical experience. Always follow local electrical codes and safety practices.
+**WARNING:** This project involves mains voltage. Only attempt if you have relevant electrical experience. Always follow local electrical codes and safety practices.
 
 ## Development Status
 
-- [x] Project structure
-- [ ] Core state machine
-- [ ] Telegram bot interface
-- [ ] CYD touchscreen UI
-- [ ] Python simulator
-- [ ] KiCad schematic (power board)
-- [ ] CYD enclosure design (OpenSCAD)
-- [ ] Power board PCB layout
-- [ ] STM32 UART firmware
-- [ ] MAX31855 SPI driver (STM32)
-- [ ] UART integration (CYD)
-- [ ] Testing and validation
+### Firmware
+- [x] Core state machine (OFF/WARM/LOW/HIGH, mutex-protected)
+- [x] MAX31855 thermocouple SPI driver
+- [x] Relay/SSR control (active-high/low configurable)
+- [x] WiFi connection management (NVS credentials, retry logic)
+- [x] Telegram bot (long-poll, commands, NVS token, chat ID whitelist)
+- [x] Telegram safety alerts (non-blocking queue, fires on auto-shutoff)
+- [x] NVS config helpers (shared wifi + telegram storage)
+- [x] ST7796 SPI display driver (esp_lcd)
+- [x] FT6336U I2C touch driver (esp_lcd_touch)
+- [x] LVGL integration (esp_lvgl_port)
+- [x] Full touchscreen UI (4 screens, arc indicator, status bar, toast overlay)
+- [x] Task watchdog timer (esp_task_wdt)
+- [x] Boot log (chip info, IDF version, all GPIO pins)
 
-## Contributing
+### Hardware (PCB)
+- [ ] Schematic (in progress — MCU, LDO, MAX31855, relay, connectors pending)
+- [ ] PCB layout
+- [ ] Gerber generation
+- [ ] Prototype build and validation
 
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Submit a pull request
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [firmware_architecture.md](docs/firmware_architecture.md) | Firmware module breakdown, task structure, LVGL stack |
+| [hardware_decisions.md](docs/hardware_decisions.md) | Component selection rationale, ESP32-S3 vs alternatives |
+| [telegram_setup.md](docs/telegram_setup.md) | Bot creation and configuration guide |
+| [wiring.md](docs/wiring.md) | Bench wiring guide |
+| [assembly.md](docs/assembly.md) | Assembly instructions |
 
 ## License
 
 This project is open source. License TBD.
-
-## Acknowledgments
-
-- ESP-IDF framework by Espressif
-- KiCad EDA for hardware design
-- Telegram Bot API

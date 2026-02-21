@@ -2,11 +2,38 @@
 
 *Written February 2026 — covers remaining work to get the single-board ESP32-S3 design to a working state.*
 
+> **Status: ALL PHASES COMPLETE** (February 2026)
+> See [firmware_architecture.md](firmware_architecture.md) for documentation of the implemented system.
+
 ---
 
-## Current State Assessment
+## Final State
 
-### What's implemented and working
+All 7 phases implemented. Firmware is feature-complete pending hardware bring-up.
+
+| File | State | Notes |
+|------|-------|-------|
+| `crockpot.c` | **Done** | State machine, mutex, safety shutoff, sensor watchdog, alert callback, TWDT |
+| `temperature.c` | **Done** | MAX31855 SPI driver, fault decoding |
+| `relay.c` | **Done** | GPIO relay control, active-high/low configurable via Kconfig |
+| `wifi.c` | **Done** | STA mode, event-driven, retry logic, NVS credentials |
+| `telegram.c` | **Done** | Long-polling, commands, NVS token, chat ID whitelist, alert queue |
+| `nvs_config.c` | **Done** | Shared NVS helpers for wifi + telegram |
+| `spi_bus.c` | **Done** | Shared SPI2 bus init |
+| `display_driver.c` | **Done** | ST7796 SPI driver via esp_lcd |
+| `touch_driver.c` | **Done** | FT6336U I2C driver via esp_lcd_touch_ft5x06 |
+| `display.c` | **Done** | LVGL init, lvgl_port setup, display + touch registration |
+| `gui.c` | **Done** | Full LVGL UI: 4 screens, arc indicator, buttons, status bar, toast overlay |
+| `Kconfig.projbuild` | **Done** | All GPIO and credential config options |
+| `idf_component.yml` | **Done** | LVGL v9, esp_lvgl_port v2, esp_lcd_st7796, esp_lcd_touch_ft5x06 |
+| `display_hal.c/.h` | **Deleted** | Replaced by LVGL + esp_lcd |
+| `touch_hal.c/.h` | **Deleted** | Replaced by esp_lcd_touch |
+
+---
+
+## Original State Assessment (at plan time)
+
+### What was implemented and working
 
 | File | State | Notes |
 |------|-------|-------|
@@ -97,7 +124,7 @@ GPIO budget: 15 signals used, ~18 spare (1, 14, 15, 18, 21, 38-44, 48).
 
 ## Phase Plan
 
-### Phase 1 — GPIO Pin Assignments & Kconfig
+### Phase 1 — GPIO Pin Assignments & Kconfig ✓ DONE
 
 **Goal:** Replace hardcoded XIAO ESP32-C3 pin numbers with correct ESP32-S3 values, moved to `Kconfig` so they're configurable without touching source code.
 
@@ -143,7 +170,7 @@ endmenu
 
 ---
 
-### Phase 2 — NVS Provisioning
+### Phase 2 — NVS Provisioning ✓ DONE
 
 **Goal:** WiFi credentials and Telegram token loaded from NVS at boot, with a provisioning flow when not set.
 
@@ -165,7 +192,7 @@ endmenu
 
 ---
 
-### Phase 3 — ST7796 SPI Display Driver
+### Phase 3 — ST7796 SPI Display Driver ✓ DONE
 
 **Goal:** Implement a real display driver using `esp_lcd`.
 
@@ -188,7 +215,7 @@ endmenu
 
 ---
 
-### Phase 4 — FT6336U Touch Driver
+### Phase 4 — FT6336U Touch Driver ✓ DONE
 
 **Goal:** Read touch coordinates from the FT6336U over I2C.
 
@@ -206,7 +233,7 @@ endmenu
 
 ---
 
-### Phase 5 — LVGL Integration
+### Phase 5 — LVGL Integration ✓ DONE
 
 **Goal:** Wire the ST7796 display driver and FT6336U touch driver into LVGL using `esp_lvgl_port`.
 
@@ -237,7 +264,7 @@ endmenu
 
 ---
 
-### Phase 6 — GUI Rewrite with LVGL
+### Phase 6 — GUI Rewrite with LVGL ✓ DONE
 
 **Goal:** Rewrite `gui.c` using LVGL widgets, replacing the custom drawing primitives.
 
@@ -286,7 +313,7 @@ endmenu
 
 ---
 
-### Phase 7 — Watchdog & Hardening
+### Phase 7 — Watchdog & Hardening ✓ DONE
 
 **Goal:** Add remaining safety infrastructure.
 
