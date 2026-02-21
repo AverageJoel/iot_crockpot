@@ -10,8 +10,10 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_http_client.h"
 #include "esp_tls.h"
@@ -31,6 +33,11 @@ static int s_response_len = 0;
 
 // Connection status
 static bool s_connected = false;
+
+// Alert queue — non-blocking outbound messages queued from other tasks
+#define ALERT_MSG_MAX 128
+static QueueHandle_t s_alert_queue = NULL;
+static int64_t s_alert_chat_id = 0;
 
 // Telegram API base URL
 #define TELEGRAM_API_BASE "https://api.telegram.org/bot"
@@ -232,6 +239,21 @@ bool telegram_init(void)
         return false;
     }
 
+    // Parse alert chat ID from Kconfig (used to send outbound alerts)
+    const char* chat_id_str = CONFIG_CROCKPOT_TELEGRAM_ALLOWED_CHAT_ID;
+    if (strlen(chat_id_str) > 0) {
+        s_alert_chat_id = (int64_t)atoll(chat_id_str);
+        ESP_LOGI(TAG, "Alert chat ID: %lld", (long long)s_alert_chat_id);
+    }
+
+    // Create outbound alert queue (depth=4, no heap pressure from alerts)
+    if (s_alert_queue == NULL) {
+        s_alert_queue = xQueueCreate(4, ALERT_MSG_MAX);
+        if (s_alert_queue == NULL) {
+            ESP_LOGW(TAG, "Failed to create alert queue");
+        }
+    }
+
     ESP_LOGI(TAG, "Telegram interface initialized");
     return true;
 }
@@ -301,6 +323,14 @@ void telegram_task(void* pvParameters)
         }
 
         esp_http_client_cleanup(client);
+
+        // Drain any queued alert messages
+        if (s_alert_queue != NULL && s_alert_chat_id != 0) {
+            char alert_buf[ALERT_MSG_MAX];
+            while (xQueueReceive(s_alert_queue, alert_buf, 0) == pdTRUE) {
+                telegram_send_message(s_alert_chat_id, alert_buf);
+            }
+        }
 
         // Small delay between polls
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -373,4 +403,18 @@ bool telegram_set_token(const char* token)
 
     ESP_LOGI(TAG, "Bot token set");
     return true;
+}
+
+void telegram_queue_alert(const char* message)
+{
+    if (s_alert_queue == NULL || s_alert_chat_id == 0 || message == NULL) {
+        return;
+    }
+
+    char buf[ALERT_MSG_MAX];
+    strncpy(buf, message, ALERT_MSG_MAX - 1);
+    buf[ALERT_MSG_MAX - 1] = '\0';
+
+    // Non-blocking — drop silently if queue is full
+    xQueueSend(s_alert_queue, buf, 0);
 }

@@ -15,6 +15,7 @@
 #include "freertos/semphr.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_task_wdt.h"
 
 static const char* TAG = "crockpot";
 
@@ -32,6 +33,14 @@ static crockpot_status_t s_status = {
 
 // Boot timestamp for uptime calculation
 static int64_t s_boot_time_us = 0;
+
+// Safety alert callback (set by caller, fired on auto-shutoff)
+static crockpot_alert_cb_t s_alert_cb = NULL;
+
+void crockpot_set_alert_callback(crockpot_alert_cb_t cb)
+{
+    s_alert_cb = cb;
+}
 
 bool crockpot_init(void)
 {
@@ -145,17 +154,33 @@ void crockpot_control_task(void* pvParameters)
 {
     ESP_LOGI(TAG, "Control task started");
 
+    // Register with the task watchdog timer (auto-initialized via sdkconfig).
+    // The loop runs every 1 s; watchdog timeout is 10 s — plenty of headroom.
+    esp_err_t wdt_err = esp_task_wdt_add(NULL);
+    if (wdt_err != ESP_OK) {
+        ESP_LOGW(TAG, "TWDT registration failed: %s — watchdog inactive for control task",
+                 esp_err_to_name(wdt_err));
+    }
+
     TickType_t last_wake_time = xTaskGetTickCount();
+    static int sensor_error_count = 0;
 
     while (1) {
-        // Read temperature
+        // Read temperature before taking the mutex (SPI read, may take ~1 ms)
         temperature_reading_t reading = temperature_read();
 
+        // Flags set inside mutex, callbacks fired after releasing it
+        bool temp_shutoff   = false;
+        bool sensor_shutoff = false;
+
         if (xSemaphoreTake(s_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+            bool was_heating = (s_status.state != CROCKPOT_OFF);
+
             // Update temperature
             if (reading.valid) {
                 s_status.temperature_f = reading.temperature_f;
-                s_status.sensor_error = false;
+                s_status.sensor_error  = false;
+                sensor_error_count     = 0;
             } else {
                 s_status.sensor_error = true;
             }
@@ -168,27 +193,41 @@ void crockpot_control_task(void* pvParameters)
             s_status.wifi_connected = wifi_is_connected();
 
             // Safety check: auto-shutoff on high temperature
-            if (reading.valid && reading.temperature_f > CROCKPOT_SAFETY_TEMP_F) {
+            if (was_heating && reading.valid &&
+                reading.temperature_f > CROCKPOT_SAFETY_TEMP_F) {
                 ESP_LOGW(TAG, "SAFETY: Temperature %.1f F exceeds limit, shutting off",
                          reading.temperature_f);
                 s_status.state = CROCKPOT_OFF;
                 relay_all_off();
+                temp_shutoff = true;
             }
 
-            // Safety check: shut off on persistent sensor error while heating
-            if (s_status.sensor_error && s_status.state != CROCKPOT_OFF) {
-                static int error_count = 0;
-                error_count++;
-                if (error_count > 10) {  // 10 consecutive errors
-                    ESP_LOGW(TAG, "SAFETY: Persistent sensor error, shutting off");
+            // Safety check: shut off on persistent sensor errors while heating
+            if (was_heating && s_status.sensor_error) {
+                sensor_error_count++;
+                if (sensor_error_count > 10) {
+                    ESP_LOGW(TAG, "SAFETY: Persistent sensor error (%d consecutive), shutting off",
+                             sensor_error_count);
                     s_status.state = CROCKPOT_OFF;
                     relay_all_off();
-                    error_count = 0;
+                    sensor_error_count = 0;
+                    sensor_shutoff = true;
                 }
             }
 
             xSemaphoreGive(s_state_mutex);
         }
+
+        // Fire alert callbacks outside the mutex — safe to call crockpot_get_status()
+        if (temp_shutoff && s_alert_cb) {
+            s_alert_cb(CROCKPOT_ALERT_TEMP_LIMIT, reading.temperature_f);
+        }
+        if (sensor_shutoff && s_alert_cb) {
+            s_alert_cb(CROCKPOT_ALERT_SENSOR_ERROR, reading.temperature_f);
+        }
+
+        // Feed the task watchdog
+        esp_task_wdt_reset();
 
         // Wait for next cycle
         vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(CROCKPOT_CONTROL_INTERVAL_MS));

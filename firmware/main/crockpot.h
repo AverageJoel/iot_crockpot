@@ -108,6 +108,38 @@ void crockpot_control_task(void* pvParameters);
  */
 #define CROCKPOT_CONTROL_INTERVAL_MS 1000
 
+// ============================================================================
+// Safety alert callback
+// ============================================================================
+
+/**
+ * @brief Reason for an automatic safety shutoff
+ */
+typedef enum {
+    CROCKPOT_ALERT_TEMP_LIMIT,   // temperature exceeded CROCKPOT_SAFETY_TEMP_F
+    CROCKPOT_ALERT_SENSOR_ERROR, // persistent sensor errors while heating
+} crockpot_alert_t;
+
+/**
+ * @brief Callback invoked on automatic safety shutoff
+ *
+ * Called from the control task after the relay has been turned off and
+ * the state mutex has been released — safe to call other crockpot functions.
+ *
+ * @param reason  Why the shutoff happened
+ * @param temp_f  Last known temperature in Fahrenheit
+ */
+typedef void (*crockpot_alert_cb_t)(crockpot_alert_t reason, float temp_f);
+
+/**
+ * @brief Register a safety alert callback.
+ *
+ * Only one callback is supported. Pass NULL to clear.
+ *
+ * @param cb  Callback function, or NULL
+ */
+void crockpot_set_alert_callback(crockpot_alert_cb_t cb);
+
 #ifdef __cplusplus
 }
 #endif

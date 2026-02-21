@@ -63,6 +63,17 @@ bool telegram_is_connected(void);
  */
 bool telegram_set_token(const char* token);
 
+/**
+ * @brief Queue an outgoing alert message to the configured chat ID.
+ *
+ * Non-blocking — safe to call from any task including the control task.
+ * The message is sent by the Telegram task on its next poll cycle.
+ * Silently dropped if the queue is full or no chat ID is configured.
+ *
+ * @param message  Alert text to send
+ */
+void telegram_queue_alert(const char* message);
+
 // Long polling timeout in seconds
 #define TELEGRAM_POLL_TIMEOUT_S 30
 
