@@ -1,0 +1,17 @@
+## IDF Component Manager dependencies
+## Run "idf.py update-dependencies" after editing this file.
+
+dependencies:
+  ## ST7796 display panel driver
+  espressif/esp_lcd_st7796:
+    version: "^1.0.0"
+
+  ## FT6336U capacitive touch driver (FT5x06 family compatible)
+  espressif/esp_lcd_touch_ft5x06:
+    version: "^1.0.0"
+
+  ## LVGL + esp_lvgl_port (Phase 5)
+  lvgl/lvgl:
+    version: "^9.0.0"
+  espressif/esp_lvgl_port:
+    version: "^2.0.0"

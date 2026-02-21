@@ -4,6 +4,7 @@
  */
 
 #include "wifi.h"
+#include "nvs_config.h"
 
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -132,12 +133,26 @@ bool wifi_connect(void)
         },
     };
 
-    // TODO: Load credentials from NVS
-    // For now, use defaults from sdkconfig
-    strncpy((char*)wifi_config.sta.ssid, WIFI_DEFAULT_SSID,
-            sizeof(wifi_config.sta.ssid) - 1);
-    strncpy((char*)wifi_config.sta.password, WIFI_DEFAULT_PASS,
-            sizeof(wifi_config.sta.password) - 1);
+    // Load credentials: NVS takes priority, fall back to Kconfig default
+    char ssid[32] = "";
+    char password[64] = "";
+
+    if (!nvs_config_read_str(NVS_NS_WIFI, NVS_KEY_WIFI_SSID, ssid, sizeof(ssid))) {
+        strncpy(ssid, WIFI_DEFAULT_SSID, sizeof(ssid) - 1);
+        if (strlen(ssid) > 0) {
+            ESP_LOGI(TAG, "Using Kconfig default SSID");
+        }
+    } else {
+        ESP_LOGI(TAG, "Loaded SSID from NVS");
+    }
+
+    nvs_config_read_str(NVS_NS_WIFI, NVS_KEY_WIFI_PASSWORD, password, sizeof(password));
+    if (strlen(password) == 0) {
+        strncpy(password, WIFI_DEFAULT_PASS, sizeof(password) - 1);
+    }
+
+    strncpy((char*)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
+    strncpy((char*)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
 
     if (strlen((char*)wifi_config.sta.ssid) == 0) {
         ESP_LOGE(TAG, "WiFi SSID not configured");
@@ -215,7 +230,15 @@ void wifi_disconnect(void)
 
 bool wifi_set_credentials(const char* ssid, const char* password)
 {
-    // TODO: Store in NVS
-    ESP_LOGI(TAG, "Setting WiFi credentials (NVS storage not yet implemented)");
-    return true;
+    if (ssid == NULL || password == NULL) {
+        return false;
+    }
+
+    bool ok = nvs_config_write_str(NVS_NS_WIFI, NVS_KEY_WIFI_SSID, ssid);
+    ok &= nvs_config_write_str(NVS_NS_WIFI, NVS_KEY_WIFI_PASSWORD, password);
+
+    if (ok) {
+        ESP_LOGI(TAG, "WiFi credentials saved to NVS (takes effect on next connect)");
+    }
+    return ok;
 }

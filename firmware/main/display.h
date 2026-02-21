@@ -11,6 +11,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "lvgl.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,7 +24,7 @@ typedef enum {
     DISPLAY_TYPE_NONE,
     DISPLAY_TYPE_OLED_SSD1306,
     DISPLAY_TYPE_TFT_ILI9341,
-    // Add more display types as needed
+    DISPLAY_TYPE_TFT_ST7796,
 } display_type_t;
 
 /**
@@ -83,17 +84,30 @@ void display_set_brightness(uint8_t brightness);
  */
 display_type_t display_get_type(void);
 
-// Display configuration (TODO: move to menuconfig)
-// XIAO ESP32-C3 I2C pins: D4=GPIO6, D5=GPIO7
-#define DISPLAY_SDA_GPIO 6
-#define DISPLAY_SCL_GPIO 7
-#define DISPLAY_WIDTH    128
-#define DISPLAY_HEIGHT   64
+/**
+ * @brief Get the LVGL display handle (for use by the GUI layer)
+ *
+ * @return LVGL display handle, or NULL if not initialized
+ */
+lv_display_t *display_get_lvgl_disp(void);
 
-// Button GPIOs (if using OLED + buttons)
-#define BUTTON_UP_GPIO    12
-#define BUTTON_DOWN_GPIO  13
-#define BUTTON_SELECT_GPIO 14
+/**
+ * @brief Get the LVGL input device handle for touch
+ *
+ * @return LVGL indev handle, or NULL if touch not initialized
+ */
+lv_indev_t *display_get_lvgl_indev(void);
+
+// Display dimensions — from Kconfig (set for ST7796 landscape)
+#define DISPLAY_WIDTH   CONFIG_CROCKPOT_LCD_WIDTH
+#define DISPLAY_HEIGHT  CONFIG_CROCKPOT_LCD_HEIGHT
+
+// Physical button GPIOs (optional fallback input — from Kconfig)
+// These are unused placeholder values; buttons may be omitted from the PCB.
+// display.c button ISR will be removed when GUI is rewritten with LVGL (Phase 6).
+#define BUTTON_UP_GPIO     1
+#define BUTTON_DOWN_GPIO   14
+#define BUTTON_SELECT_GPIO 15
 
 // Display update interval
 #define DISPLAY_UPDATE_INTERVAL_MS 250

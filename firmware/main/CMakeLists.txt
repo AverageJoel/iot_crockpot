@@ -1,14 +1,16 @@
 idf_component_register(
     SRCS
         "main.c"
+        "nvs_config.c"
         "wifi.c"
         "crockpot.c"
         "temperature.c"
         "relay.c"
         "telegram.c"
+        "spi_bus.c"
+        "display_driver.c"
+        "touch_driver.c"
         "display.c"
-        "display_hal.c"
-        "touch_hal.c"
         "gui.c"
     INCLUDE_DIRS "."
     REQUIRES
@@ -19,4 +21,6 @@ idf_component_register(
         json
         driver
         esp_timer
+        esp_lcd
+        esp_lvgl_port
 )

@@ -6,6 +6,7 @@
 #include "telegram.h"
 #include "crockpot.h"
 #include "wifi.h"
+#include "nvs_config.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -178,6 +179,17 @@ static void process_updates(const char* json_response)
         }
         int64_t chat_id_val = (int64_t)chat_id->valuedouble;
 
+        // Chat ID whitelist check
+        const char* allowed_id = CONFIG_CROCKPOT_TELEGRAM_ALLOWED_CHAT_ID;
+        if (strlen(allowed_id) > 0) {
+            char chat_id_str[32];
+            snprintf(chat_id_str, sizeof(chat_id_str), "%lld", (long long)chat_id_val);
+            if (strcmp(chat_id_str, allowed_id) != 0) {
+                ESP_LOGW(TAG, "Ignoring message from unauthorized chat ID %lld", (long long)chat_id_val);
+                continue;
+            }
+        }
+
         // Get text
         cJSON* text = cJSON_GetObjectItem(message, "text");
         if (cJSON_IsString(text) && text->valuestring != NULL) {
@@ -205,11 +217,18 @@ bool telegram_init(void)
 {
     ESP_LOGI(TAG, "Initializing Telegram interface");
 
-    // TODO: Load token from NVS
-    // For now, check if token is set
+    // Priority: NVS > Kconfig default
+    if (nvs_config_read_str(NVS_NS_TELEGRAM, NVS_KEY_TG_TOKEN, s_bot_token, sizeof(s_bot_token))) {
+        ESP_LOGI(TAG, "Loaded bot token from NVS");
+    } else if (strlen(CONFIG_CROCKPOT_TELEGRAM_TOKEN) > 0) {
+        strncpy(s_bot_token, CONFIG_CROCKPOT_TELEGRAM_TOKEN, sizeof(s_bot_token) - 1);
+        s_bot_token[sizeof(s_bot_token) - 1] = '\0';
+        ESP_LOGI(TAG, "Using Kconfig default bot token");
+    }
+
     if (strlen(s_bot_token) == 0) {
         ESP_LOGW(TAG, "Telegram bot token not configured");
-        ESP_LOGW(TAG, "Set token using telegram_set_token() or configure in NVS");
+        ESP_LOGW(TAG, "Set via menuconfig (IoT Crockpot -> Telegram) or telegram_set_token()");
         return false;
     }
 
@@ -348,7 +367,10 @@ bool telegram_set_token(const char* token)
     strncpy(s_bot_token, token, sizeof(s_bot_token) - 1);
     s_bot_token[sizeof(s_bot_token) - 1] = '\0';
 
-    // TODO: Store in NVS
+    if (!nvs_config_write_str(NVS_NS_TELEGRAM, NVS_KEY_TG_TOKEN, s_bot_token)) {
+        ESP_LOGW(TAG, "Failed to save bot token to NVS");
+    }
+
     ESP_LOGI(TAG, "Bot token set");
     return true;
 }

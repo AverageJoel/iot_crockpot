@@ -7,6 +7,7 @@
  */
 
 #include "temperature.h"
+#include "spi_bus.h"
 
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
@@ -28,19 +29,9 @@ bool temperature_init(void)
     ESP_LOGI(TAG, "Initializing MAX31855 on SPI (CS=%d, CLK=%d, MISO=%d)",
              MAX31855_PIN_CS, MAX31855_PIN_CLK, MAX31855_PIN_MISO);
 
-    // Configure SPI bus
-    spi_bus_config_t bus_cfg = {
-        .miso_io_num = MAX31855_PIN_MISO,
-        .mosi_io_num = -1,  // Not used (read-only device)
-        .sclk_io_num = MAX31855_PIN_CLK,
-        .quadwp_io_num = -1,
-        .quadhd_io_num = -1,
-        .max_transfer_sz = 4,
-    };
-
-    esp_err_t ret = spi_bus_initialize(MAX31855_SPI_HOST, &bus_cfg, SPI_DMA_DISABLED);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to initialize SPI bus: %s", esp_err_to_name(ret));
+    // Initialize the shared SPI bus (idempotent — display driver may have already done this)
+    if (!spi_bus_init()) {
+        ESP_LOGE(TAG, "Failed to initialize SPI bus");
         return false;
     }
 
@@ -53,10 +44,9 @@ bool temperature_init(void)
         .flags = 0,
     };
 
-    ret = spi_bus_add_device(MAX31855_SPI_HOST, &dev_cfg, &s_spi_handle);
+    esp_err_t ret = spi_bus_add_device(MAX31855_SPI_HOST, &dev_cfg, &s_spi_handle);
     if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to add SPI device: %s", esp_err_to_name(ret));
-        spi_bus_free(MAX31855_SPI_HOST);
+        ESP_LOGE(TAG, "Failed to add MAX31855 to SPI bus: %s", esp_err_to_name(ret));
         return false;
     }
 

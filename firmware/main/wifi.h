@@ -94,9 +94,10 @@ void wifi_disconnect(void);
  */
 bool wifi_set_credentials(const char* ssid, const char* password);
 
-// Default credentials (for development - use NVS in production)
-#define WIFI_DEFAULT_SSID ""
-#define WIFI_DEFAULT_PASS ""
+// Default credentials — from Kconfig (idf.py menuconfig → IoT Crockpot → WiFi)
+// Can be overridden at runtime via NVS.
+#define WIFI_DEFAULT_SSID CONFIG_CROCKPOT_WIFI_SSID
+#define WIFI_DEFAULT_PASS CONFIG_CROCKPOT_WIFI_PASSWORD
 
 // Connection timeout
 #define WIFI_CONNECT_TIMEOUT_MS 30000

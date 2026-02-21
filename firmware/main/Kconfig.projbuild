@@ -1,0 +1,125 @@
+menu "IoT Crockpot"
+
+    menu "SPI Bus"
+        config CROCKPOT_SPI_SCK
+            int "SPI SCK GPIO"
+            default 12
+            help
+                SPI clock pin. Shared between ST7796 display, SD card, and MAX31855.
+
+        config CROCKPOT_SPI_MOSI
+            int "SPI MOSI GPIO"
+            default 11
+            help
+                SPI MOSI pin. Shared between ST7796 display and SD card.
+                MAX31855 is read-only and does not use MOSI.
+
+        config CROCKPOT_SPI_MISO
+            int "SPI MISO GPIO"
+            default 13
+            help
+                SPI MISO pin. Shared between ST7796 display, SD card, and MAX31855.
+    endmenu
+
+    menu "Display (ST7796)"
+        config CROCKPOT_LCD_CS
+            int "LCD chip select GPIO"
+            default 10
+
+        config CROCKPOT_LCD_DC
+            int "LCD data/command select GPIO"
+            default 9
+
+        config CROCKPOT_LCD_RST
+            int "LCD reset GPIO (-1 = tied to EN via RC)"
+            default 8
+
+        config CROCKPOT_LCD_BL
+            int "LCD backlight GPIO (-1 = always on)"
+            default 47
+            help
+                PWM backlight control. Set to -1 if backlight is tied directly to 3.3V.
+
+        config CROCKPOT_LCD_WIDTH
+            int "LCD width in pixels (after rotation)"
+            default 480
+
+        config CROCKPOT_LCD_HEIGHT
+            int "LCD height in pixels (after rotation)"
+            default 320
+    endmenu
+
+    menu "Touch (FT6336U)"
+        config CROCKPOT_TOUCH_SDA
+            int "Touch I2C SDA GPIO"
+            default 5
+
+        config CROCKPOT_TOUCH_SCL
+            int "Touch I2C SCL GPIO"
+            default 4
+
+        config CROCKPOT_TOUCH_RST
+            int "Touch reset GPIO (-1 = tied high via 10K)"
+            default 6
+
+        config CROCKPOT_TOUCH_INT
+            int "Touch interrupt GPIO (-1 = polled)"
+            default 7
+    endmenu
+
+    menu "MAX31855 Thermocouple"
+        config CROCKPOT_TC_CS
+            int "MAX31855 chip select GPIO"
+            default 16
+            help
+                SPI chip select for the MAX31855 thermocouple amplifier.
+                SCK and MISO are shared with the display SPI bus.
+    endmenu
+
+    menu "Relay"
+        config CROCKPOT_RELAY_GPIO
+            int "Relay/SSR GPIO"
+            default 17
+            help
+                GPIO driving the relay or solid-state relay for the heating element.
+
+        config CROCKPOT_RELAY_ACTIVE_HIGH
+            bool "Relay is active-high"
+            default y
+            help
+                Enable if relay turns ON when GPIO is HIGH.
+                Disable for active-low relay modules.
+    endmenu
+
+    menu "WiFi"
+        config CROCKPOT_WIFI_SSID
+            string "Default WiFi SSID"
+            default ""
+            help
+                Network SSID. Used if no credentials are stored in NVS.
+                Leave blank to require runtime provisioning.
+
+        config CROCKPOT_WIFI_PASSWORD
+            string "Default WiFi password"
+            default ""
+            help
+                Network password. Used if no credentials are stored in NVS.
+    endmenu
+
+    menu "Telegram"
+        config CROCKPOT_TELEGRAM_TOKEN
+            string "Default Telegram bot token"
+            default ""
+            help
+                Bot token from @BotFather. Used if no token is stored in NVS.
+                Leave blank to disable Telegram at boot.
+
+        config CROCKPOT_TELEGRAM_ALLOWED_CHAT_ID
+            string "Allowed Telegram chat ID (empty = any)"
+            default ""
+            help
+                If set, only messages from this chat ID will be processed.
+                Get your chat ID by messaging @userinfobot on Telegram.
+    endmenu
+
+endmenu

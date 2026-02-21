@@ -16,6 +16,7 @@
 #include "crockpot.h"
 #include "telegram.h"
 #include "display.h"
+#include "gui.h"
 
 static const char* TAG = "main";
 
@@ -56,10 +57,17 @@ void app_main(void)
         esp_restart();
     }
 
-    // Initialize display (local interface)
+    // Initialize display hardware + LVGL
     ESP_LOGI(TAG, "Initializing display...");
     if (!display_init()) {
         ESP_LOGW(TAG, "Display initialization failed - continuing without local UI");
+    } else {
+        // Build LVGL screen objects and start the status update timer
+        if (!gui_init()) {
+            ESP_LOGW(TAG, "GUI init failed");
+        } else {
+            gui_start();
+        }
     }
 
     // Initialize Telegram interface

@@ -1,24 +1,35 @@
 # IoT Crockpot default configuration
+# Target: ESP32-S3-WROOM-1-N4R2 (4MB flash, 2MB OPI PSRAM)
+#
+# To reconfigure after changing target:
+#   idf.py set-target esp32s3
+#   idf.py menuconfig   (set WiFi/Telegram credentials under "IoT Crockpot")
 
-# Target: XIAO ESP32-C3
-CONFIG_IDF_TARGET="esp32c3"
+CONFIG_IDF_TARGET="esp32s3"
 
-# WiFi Configuration
-CONFIG_ESP_WIFI_SSID=""
-CONFIG_ESP_WIFI_PASSWORD=""
+# Flash (4MB)
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 
-# Partition Table
+# PSRAM (2MB OPI PSRAM on N4R2 variant)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# USB Serial/JTAG console (native USB on GPIO19/20, no bridge chip needed)
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# Partition table
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # FreeRTOS
 CONFIG_FREERTOS_HZ=1000
 
-# Enable HTTPS support for Telegram API
+# HTTPS support for Telegram API
 CONFIG_ESP_TLS_USING_MBEDTLS=y
 CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN=16384
 
-# Watchdog
+# Task watchdog
 CONFIG_ESP_TASK_WDT=y
 CONFIG_ESP_TASK_WDT_PANIC=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=10
@@ -28,3 +39,14 @@ CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
 # NVS
 CONFIG_NVS_ENCRYPTION=n
+
+# LVGL
+# 16-bit RGB565 color depth — matches ST7796 SPI panel
+CONFIG_LV_COLOR_DEPTH_16=y
+# esp_lvgl_port task stack (default 4KB is tight with LVGL v9; 8KB is safe)
+CONFIG_LVGL_PORT_TASK_STACK_SIZE=8192
+# Montserrat fonts used by gui.c (14 is usually on by default; enable extras)
+CONFIG_LV_FONT_MONTSERRAT_14=y
+CONFIG_LV_FONT_MONTSERRAT_16=y
+CONFIG_LV_FONT_MONTSERRAT_20=y
+CONFIG_LV_FONT_MONTSERRAT_28=y

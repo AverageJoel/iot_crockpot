@@ -1,15 +1,18 @@
 /**
  * @file gui.h
- * @brief Crockpot GUI Layer
+ * @brief Crockpot touchscreen GUI using LVGL
  *
- * High-level GUI interface for the crockpot controller.
- * Uses display_hal.h and touch_hal.h for hardware abstraction.
+ * Four screens: Main (temperature + controls), Settings, WiFi, Info.
+ * Status is polled every 500 ms via an LVGL timer — no separate FreeRTOS
+ * task is needed. The LVGL task is managed by esp_lvgl_port.
  *
- * Screen hierarchy:
- * - Main Screen: Shows current state, temperature, relay status
- * - Settings Screen: Adjust temperature limits, timers
- * - WiFi Screen: Network status and configuration
- * - Info Screen: Device info, uptime, version
+ * Thread safety: all public functions acquire the LVGL port lock
+ * internally and are safe to call from any FreeRTOS task.
+ *
+ * Typical call order:
+ *   display_init()   → hardware + LVGL up
+ *   gui_init()       → create all LVGL screen objects
+ *   gui_start()      → load main screen, start update timer
  */
 
 #ifndef GUI_H
@@ -17,7 +20,6 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include "crockpot.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,115 +29,86 @@ extern "C" {
  * @brief GUI screen identifiers
  */
 typedef enum {
-    GUI_SCREEN_MAIN,        // Main status display
-    GUI_SCREEN_SETTINGS,    // Settings menu
-    GUI_SCREEN_WIFI,        // WiFi configuration
-    GUI_SCREEN_INFO,        // Device info
-    GUI_SCREEN_CALIBRATE,   // Touch calibration
-    GUI_SCREEN_COUNT        // Number of screens
+    GUI_SCREEN_MAIN,        // Temperature + heat controls
+    GUI_SCREEN_SETTINGS,    // Units toggle, misc settings
+    GUI_SCREEN_WIFI,        // Connection status + IP
+    GUI_SCREEN_INFO,        // Uptime, firmware version, chip
+    GUI_SCREEN_COUNT
 } gui_screen_t;
 
 /**
- * @brief GUI theme colors
+ * @brief Runtime GUI configuration
  */
 typedef struct {
-    uint16_t background;
-    uint16_t text;
-    uint16_t text_dim;
-    uint16_t accent;
-    uint16_t state_off;
-    uint16_t state_warm;
-    uint16_t state_low;
-    uint16_t state_high;
-    uint16_t error;
-    uint16_t success;
-} gui_theme_t;
-
-/**
- * @brief GUI configuration
- */
-typedef struct {
-    bool show_temperature_c;    // Show Celsius (false = Fahrenheit)
-    bool show_wifi_status;      // Show WiFi indicator
-    uint8_t screen_timeout_s;   // Screen dim timeout (0 = never)
-    uint8_t brightness;         // Default brightness (0-100)
+    bool    show_temperature_c;  // true = Celsius, false = Fahrenheit
+    bool    show_wifi_status;    // show WiFi indicator in status bar
+    uint8_t screen_timeout_s;   // dim backlight after N idle seconds (0 = never)
 } gui_config_t;
 
 // ============================================================================
-// Initialization
+// Lifecycle
 // ============================================================================
 
 /**
- * @brief Initialize the GUI subsystem
+ * @brief Create all LVGL screen objects.
  *
- * Initializes display and touch HALs, loads theme and config.
+ * Must be called after display_init() (LVGL must be running).
  *
  * @return true on success
  */
 bool gui_init(void);
 
 /**
- * @brief Start the GUI task
+ * @brief Load the main screen and start the 500 ms status update timer.
  *
- * Creates the FreeRTOS task that handles GUI updates.
+ * Must be called after gui_init().
  *
- * @return true if task created successfully
+ * @return true on success
  */
 bool gui_start(void);
 
 // ============================================================================
-// Screen Management
+// Navigation
 // ============================================================================
 
 /**
- * @brief Switch to a different screen
+ * @brief Navigate to a screen with a slide animation.
  *
- * @param screen Screen to display
+ * @param screen  Target screen
  */
 void gui_set_screen(gui_screen_t screen);
 
 /**
- * @brief Get current screen
- *
- * @return Current screen identifier
- */
-gui_screen_t gui_get_screen(void);
-
-/**
- * @brief Go back to previous screen
+ * @brief Navigate back to the main screen.
  */
 void gui_back(void);
 
+/**
+ * @brief Get the currently displayed screen.
+ */
+gui_screen_t gui_get_screen(void);
+
 // ============================================================================
-// Status Updates
+// Toast messages
 // ============================================================================
 
 /**
- * @brief Update GUI with current crockpot status
+ * @brief Show a temporary toast message (blue, auto-dismisses).
  *
- * Called periodically to refresh displayed data.
- *
- * @param status Current crockpot status
+ * @param message     Text to display
+ * @param duration_ms Auto-dismiss after this many ms (0 = until tapped)
  */
-void gui_update_status(const crockpot_status_t* status);
+void gui_show_message(const char *message, uint32_t duration_ms);
 
 /**
- * @brief Show temporary message overlay
+ * @brief Show a persistent error toast (red, tap to dismiss).
  *
- * @param message Message to display
- * @param duration_ms Display duration (0 = until dismissed)
+ * @param error  Error text
  */
-void gui_show_message(const char* message, uint32_t duration_ms);
+void gui_show_error(const char *error);
 
 /**
- * @brief Show error message
- *
- * @param error Error message
- */
-void gui_show_error(const char* error);
-
-/**
- * @brief Dismiss any active message/error overlay
+ * @brief Dismiss the active toast (if any).
  */
 void gui_dismiss_message(void);
 
@@ -144,73 +117,14 @@ void gui_dismiss_message(void);
 // ============================================================================
 
 /**
- * @brief Get current GUI configuration
- *
- * @return Configuration structure
+ * @brief Update GUI configuration (temperature units, backlight timeout, etc.)
+ */
+void gui_set_config(const gui_config_t *config);
+
+/**
+ * @brief Get current GUI configuration.
  */
 gui_config_t gui_get_config(void);
-
-/**
- * @brief Set GUI configuration
- *
- * @param config New configuration
- */
-void gui_set_config(const gui_config_t* config);
-
-/**
- * @brief Set GUI theme colors
- *
- * @param theme Theme colors
- */
-void gui_set_theme(const gui_theme_t* theme);
-
-/**
- * @brief Get current theme
- *
- * @return Current theme
- */
-gui_theme_t gui_get_theme(void);
-
-// ============================================================================
-// Interaction
-// ============================================================================
-
-/**
- * @brief Wake up display (e.g., on touch)
- *
- * Resets screen timeout, restores brightness.
- */
-void gui_wake(void);
-
-/**
- * @brief Check if display is currently dimmed/off
- *
- * @return true if screen is dimmed
- */
-bool gui_is_dimmed(void);
-
-/**
- * @brief Force display refresh
- */
-void gui_refresh(void);
-
-// ============================================================================
-// Default Theme
-// ============================================================================
-
-/**
- * @brief Get default dark theme
- *
- * @return Default dark theme
- */
-gui_theme_t gui_default_dark_theme(void);
-
-/**
- * @brief Get default light theme
- *
- * @return Default light theme
- */
-gui_theme_t gui_default_light_theme(void);
 
 #ifdef __cplusplus
 }

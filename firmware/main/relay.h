@@ -72,14 +72,12 @@ void relay_all_off(void);
  */
 bool relay_apply_state(crockpot_state_t state);
 
-// GPIO pins for relay control (configurable)
-// TODO: Move to menuconfig
-// XIAO ESP32-C3 pins: D2=GPIO4, D3=GPIO5
-#define RELAY_MAIN_GPIO 4   // D2 - Main heating element
-#define RELAY_AUX_GPIO  5   // D3 - Secondary relay (future use)
+// GPIO pins for relay control — from Kconfig (idf.py menuconfig)
+#define RELAY_MAIN_GPIO   CONFIG_CROCKPOT_RELAY_GPIO
+#define RELAY_AUX_GPIO    21  // Unused in single-board design; safe spare GPIO
 
-// Relay active level (some relays are active-low)
-#define RELAY_ACTIVE_HIGH 1
+// Relay active level — from Kconfig
+#define RELAY_ACTIVE_HIGH CONFIG_CROCKPOT_RELAY_ACTIVE_HIGH
 
 #ifdef __cplusplus
 }
