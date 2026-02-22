@@ -187,35 +187,33 @@ Status JSON example:
 
 ## Telegram Bot (optional)
 
-Telegram is **disabled by default** because it requires HTTPS and TLS is turned
-off in the build (`MG_TLS=MG_TLS_NONE`). To enable it:
+> **Status**: TLS/OpenSSL is enabled in the build and the bot connects, but
+> command responses are not working yet. This is a known issue to be
+> investigated. The setup steps below are complete — Telegram just needs
+> debugging.
 
-**1. Install OpenSSL (MSYS2):**
+**Prerequisites — OpenSSL must be installed (MSYS2):**
 ```bash
 pacman -S mingw-w64-ucrt-x86_64-openssl
 ```
 
-**2. Edit `CMakeLists.txt` — change the TLS definition and add OpenSSL:**
-```cmake
-# Change:
-MG_TLS=MG_TLS_NONE
-# To:
-MG_TLS=MG_TLS_OPENSSL
+**Create a bot** via `@BotFather` on Telegram if you don't have one:
+1. Open Telegram and search for `@BotFather` (blue checkmark)
+2. Send `/newbot`
+3. Give it a name (e.g. `Crockpot`) and a username ending in `bot` (e.g. `mycrockpot_bot`)
+4. Copy the token it gives you (looks like `123456789:ABCdef...`)
 
-# Add ssl and crypto to target_link_libraries:
-target_link_libraries(crockpot_sim PRIVATE lvgl ${SDL2_TARGET} m ws2_32 ssl crypto)
-```
-
-**3. Rebuild**, then create a bot via `@BotFather` on Telegram if you don't
-have one (`/newbot` → copy the token).
-
-**4. Launch with the token:**
-```bash
-SIM_TELEGRAM_TOKEN="123456789:ABCdef..." ./crockpot_sim.exe
+**Launch with the token** (PowerShell):
+```powershell
+$env:SIM_TELEGRAM_TOKEN="123456789:ABCdef..."
+.\crockpot_sim.exe
 ```
 
 You should see `[telegram] enabled (token: 12345678...)` in the terminal.
-Open your bot in Telegram and send `/start` or `/status` to test it.
+
+> **Security note**: Never put your bot token in code or commit it to git.
+> Always pass it via environment variable. If it leaks, revoke it via
+> BotFather (`/revoke`).
 
 When enabled, supported commands:
 

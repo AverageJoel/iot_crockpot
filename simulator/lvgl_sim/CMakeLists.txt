@@ -96,6 +96,8 @@ target_link_libraries(crockpot_sim PRIVATE
     lvgl
     ${SDL2_TARGET}
     m          # math (fminf etc.)
+    ssl        # OpenSSL — required for Telegram HTTPS
+    crypto     # OpenSSL
 )
 
 # On Windows, link winsock2 (required by mongoose) and force console entry point
@@ -114,10 +116,9 @@ target_compile_definitions(crockpot_sim PRIVATE
     CONFIG_CROCKPOT_LCD_HEIGHT=320
     CONFIG_CROCKPOT_WIFI_SSID="sim_ssid"
     CONFIG_CROCKPOT_WIFI_PASSWORD="sim_pass"
-    # Mongoose TLS: NONE disables TLS (HTTP server still works; Telegram needs TLS).
-    # To enable Telegram, install openssl and set MG_TLS=MG_TLS_OPENSSL here,
-    # then add OpenSSL to target_link_libraries.
-    MG_TLS=MG_TLS_NONE
+    # Mongoose TLS: OPENSSL enables HTTPS for Telegram.
+    # Requires: pacman -S mingw-w64-ucrt-x86_64-openssl
+    MG_TLS=MG_TLS_OPENSSL
     MG_ENABLE_LOG=0
 )
 

@@ -279,7 +279,11 @@ static void tg_ev_handler(struct mg_connection *c, int ev, void *ev_data)
     tg_req_ctx_t *req = (tg_req_ctx_t *)c->fn_data;
 
     if (ev == MG_EV_CONNECT) {
-        // Connection established (or TLS handshake done for HTTPS).
+        // Initialise TLS. ca="*" skips certificate verification — acceptable
+        // for a development simulator that has no system CA bundle configured.
+        struct mg_tls_opts tls = { .ca = mg_str("*") };
+        mg_tls_init(c, &tls);
+
         // Send the HTTP request now.
         if (req->type == TG_REQ_GET_UPDATES) {
             mg_printf(c,
