@@ -53,13 +53,69 @@ SDL2. Subsequent builds are incremental and fast.
 
 ## Run
 
+**Windows — launch from the MSYS2 UCRT64 shell:**
 ```bash
-./crockpot_sim          # Linux/macOS
-crockpot_sim.exe        # Windows
+cd /c/Users/Joel/Documents/Hardware_Projects/iot_crockpot/simulator/lvgl_sim/build
+./crockpot_sim.exe
 ```
 
-A 960×640 window opens showing the main crockpot screen.
-The web control page is available at `http://localhost:8080/`.
+**Linux / macOS:**
+```bash
+cd simulator/lvgl_sim/build
+./crockpot_sim
+```
+
+A 960×640 window opens showing the main crockpot screen. Expected terminal output:
+```
+[web_server] listening on http://localhost:8080
+[telegram] SIM_TELEGRAM_TOKEN not set — Telegram disabled
+IoT Crockpot Simulator running at 960x640 (LVGL 480x320 × 2)
+```
+
+> **Why the MSYS2 shell on Windows?** The executable is built with MSYS2's GCC
+> and links against MSYS2 runtime DLLs (`libgcc_s_seh-1.dll`,
+> `libwinpthread-1.dll`, etc.) that live in `C:\msys64\ucrt64\bin\`. Running
+> from the MSYS2 UCRT64 shell puts that directory on `PATH` automatically so
+> the DLLs are found. Double-clicking the `.exe` from Explorer will fail with a
+> missing DLL error unless those DLLs are copied next to the executable or
+> added to the system `PATH`.
+
+Once running:
+- The GUI window responds to mouse clicks (touch input) and keyboard shortcuts
+- The web control page is at **http://localhost:8080/**
+- The JSON API is at **http://localhost:8080/api/status**
+
+## How It Works on Windows
+
+The simulator is a **native Windows `.exe`** — not emulation, not WSL. Each
+component is a cross-platform C library compiled by GCC for x86-64 Windows:
+
+| Component | Role | Windows implementation |
+|-----------|------|------------------------|
+| **SDL2** | Window creation + mouse/keyboard input | Calls `CreateWindow` / Win32 APIs |
+| **LVGL** | UI rendering | Pure C — writes pixels into a buffer, no OS calls |
+| **mongoose** | HTTP server | Uses Winsock2 (`ws2_32.dll`) instead of BSD sockets |
+| **GCC (MSYS2)** | Compiler | Produces native PE executables |
+| **`gui.c`** | UI logic | Plain C, calls only LVGL and `crockpot_*` — compiles anywhere |
+
+At runtime the data flow is:
+
+```
+LVGL renders widgets → pixel buffer (RGB565)
+    ↓
+flush_cb() uploads dirty rectangles → SDL2 texture
+    ↓
+SDL2 scales 480×320 → 960×640 and presents to the window
+    ↓  (every ~5 ms)
+Mouse position → LVGL touch input
+Keyboard events → crockpot state changes
+mongoose polls for HTTP requests on :8080
+1-second timer → crockpot_tick_s() (physics + schedule advance)
+```
+
+`gui.c` is completely unaware it is running on a PC. It calls
+`crockpot_get_status()` and LVGL widget APIs exactly as it would on the
+ESP32 — the stub implementations in `stubs/` provide the hardware behaviour.
 
 ## Keyboard Controls
 
@@ -131,10 +187,35 @@ Status JSON example:
 
 ## Telegram Bot (optional)
 
-Set the `SIM_TELEGRAM_TOKEN` environment variable to your bot token before
-launching. TLS is required for Telegram HTTPS; it is disabled by default
-(`MG_TLS=MG_TLS_NONE`), so Telegram is silently disabled unless you enable TLS
-in `CMakeLists.txt` and link OpenSSL.
+Telegram is **disabled by default** because it requires HTTPS and TLS is turned
+off in the build (`MG_TLS=MG_TLS_NONE`). To enable it:
+
+**1. Install OpenSSL (MSYS2):**
+```bash
+pacman -S mingw-w64-ucrt-x86_64-openssl
+```
+
+**2. Edit `CMakeLists.txt` — change the TLS definition and add OpenSSL:**
+```cmake
+# Change:
+MG_TLS=MG_TLS_NONE
+# To:
+MG_TLS=MG_TLS_OPENSSL
+
+# Add ssl and crypto to target_link_libraries:
+target_link_libraries(crockpot_sim PRIVATE lvgl ${SDL2_TARGET} m ws2_32 ssl crypto)
+```
+
+**3. Rebuild**, then create a bot via `@BotFather` on Telegram if you don't
+have one (`/newbot` → copy the token).
+
+**4. Launch with the token:**
+```bash
+SIM_TELEGRAM_TOKEN="123456789:ABCdef..." ./crockpot_sim.exe
+```
+
+You should see `[telegram] enabled (token: 12345678...)` in the terminal.
+Open your bot in Telegram and send `/start` or `/status` to test it.
 
 When enabled, supported commands:
 
