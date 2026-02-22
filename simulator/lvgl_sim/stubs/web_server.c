@@ -71,6 +71,53 @@ static void status_to_json(const crockpot_status_t *st,
              st->schedule_step_progress);
 }
 
+// -- URI helpers -------------------------------------------------------------
+
+/**
+ * Extract the last path component of an mg_str URI into a null-terminated
+ * caller-supplied buffer. Returns false if URI has no component after last slash.
+ *
+ * IMPORTANT: hm->uri is NOT null-terminated; it points into the raw HTTP
+ * request buffer and must be bounded by uri.len before any str* calls.
+ */
+static bool uri_last_component(struct mg_str uri, char *out, size_t out_len)
+{
+    const char *last_slash = NULL;
+    for (size_t i = 0; i < uri.len; i++) {
+        if (uri.buf[i] == '/') last_slash = uri.buf + i;
+    }
+    if (!last_slash || last_slash[1] == '\0') return false;
+
+    const char *start = last_slash + 1;
+    size_t comp_len = (size_t)(uri.buf + uri.len - start);
+    if (comp_len >= out_len) comp_len = out_len - 1;
+    memcpy(out, start, comp_len);
+    out[comp_len] = '\0';
+    return true;
+}
+
+/**
+ * Decode percent-encoded characters in-place.
+ * e.g. "Slow%20Cook" -> "Slow Cook". '+' also treated as space.
+ */
+static void url_decode_inplace(char *s)
+{
+    char *r = s, *w = s;
+    while (*r) {
+        if (*r == '%' && r[1] && r[2]) {
+            char hex[3] = { r[1], r[2], '\0' };
+            *w++ = (char)strtol(hex, NULL, 16);
+            r += 3;
+        } else if (*r == '+') {
+            *w++ = ' ';
+            r++;
+        } else {
+            *w++ = *r++;
+        }
+    }
+    *w = '\0';
+}
+
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 static void handle_get_status(struct mg_connection *c)
@@ -84,20 +131,16 @@ static void handle_get_status(struct mg_connection *c)
 static void handle_post_state(struct mg_connection *c,
                                struct mg_http_message *hm)
 {
-    // URI: /api/state/{state}  → extract last path component
-    // e.g. /api/state/high → "high"
-    struct mg_str uri = hm->uri;
-    const char *last_slash = NULL;
-    for (size_t i = 0; i < uri.len; i++) {
-        if (uri.buf[i] == '/') last_slash = uri.buf + i;
-    }
-    if (!last_slash || last_slash[1] == '\0') {
+    // URI: /api/state/{state} -- extract last path component
+    // e.g. /api/state/high -> "high"
+    char state_str[32];
+    if (!uri_last_component(hm->uri, state_str, sizeof(state_str))) {
         send_json(c, 400, "{\"error\":\"missing state\"}");
         return;
     }
 
     crockpot_state_t state;
-    if (!crockpot_state_from_string(last_slash + 1, &state)) {
+    if (!crockpot_state_from_string(state_str, &state)) {
         send_json(c, 400, "{\"error\":\"unknown state\"}");
         return;
     }
@@ -136,17 +179,13 @@ static void handle_get_schedules(struct mg_connection *c)
 static void handle_post_schedule_start(struct mg_connection *c,
                                         struct mg_http_message *hm)
 {
-    // URI: /api/schedule/start/{name}
-    struct mg_str uri = hm->uri;
-    const char *last_slash = NULL;
-    for (size_t i = 0; i < uri.len; i++) {
-        if (uri.buf[i] == '/') last_slash = uri.buf + i;
-    }
-    if (!last_slash || last_slash[1] == '\0') {
+    // URI: /api/schedule/start/{name}  (name may be percent-encoded)
+    char name[64];
+    if (!uri_last_component(hm->uri, name, sizeof(name))) {
         send_json(c, 400, "{\"error\":\"missing name\"}");
         return;
     }
-    const char *name = last_slash + 1;
+    url_decode_inplace(name);
 
     const crockpot_schedule_t *presets[] = {
         &CROCKPOT_SCHED_SLOW_COOK,
@@ -154,10 +193,7 @@ static void handle_post_schedule_start(struct mg_connection *c,
         &CROCKPOT_SCHED_ALL_DAY,
     };
     for (int i = 0; i < 3; i++) {
-        if (strcasecmp(presets[i]->name, name) == 0 ||
-            /* also accept URL-encoded spaces as underscores or pluses */
-            (strncasecmp(presets[i]->name, name,
-                         strlen(presets[i]->name)) == 0)) {
+        if (strcasecmp(presets[i]->name, name) == 0) {
             crockpot_schedule_start(presets[i]);
             char resp[64];
             snprintf(resp, sizeof(resp),
