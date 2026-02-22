@@ -34,11 +34,24 @@ FetchContent_Declare(
     GIT_TAG        v9.2.2
     GIT_SHALLOW    TRUE
 )
+# Disable LVGL's built-in examples and demos — they use widgets we've disabled
+# (LV_USE_SLIDER etc.) and are not needed for the simulator.
+set(LV_CONF_BUILD_DISABLE_EXAMPLES ON CACHE BOOL "" FORCE)
+set(LV_CONF_BUILD_DISABLE_DEMOS    ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(lvgl)
 
-# Tell LVGL where our lv_conf.h is (absolute path, works from any build dir)
-target_compile_definitions(lvgl PUBLIC
-    "LV_CONF_PATH=\"${CMAKE_CURRENT_SOURCE_DIR}/lv_conf.h\""
+# LVGL's own cmake sets LV_CONF_INCLUDE_SIMPLE, so it does #include "lv_conf.h".
+# Add our simulator root so that include finds our lv_conf.h.
+target_include_directories(lvgl PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Exclude ARM-only assembly (Helium/MVE, NEON) — not valid on x86.
+# LVGL's custom.cmake uses GLOB_RECURSE *.S which picks these up unconditionally.
+# TARGET_DIRECTORY is required to set the property in the lvgl subdirectory scope.
+set_source_files_properties(
+    "${lvgl_SOURCE_DIR}/src/draw/sw/blend/helium/lv_blend_helium.S"
+    "${lvgl_SOURCE_DIR}/src/draw/sw/blend/neon/lv_blend_neon.S"
+    TARGET_DIRECTORY lvgl
+    PROPERTIES HEADER_FILE_ONLY TRUE
 )
 
 # ── Simulator executable ──────────────────────────────────────────────────────
@@ -66,6 +79,23 @@ target_include_directories(crockpot_sim PRIVATE
 target_link_libraries(crockpot_sim PRIVATE
     lvgl
     ${SDL2_TARGET}
+)
+
+# On Windows, SDL2 normally renames main→SDL_main via SDL_main.h.
+# We define SDL_MAIN_HANDLED in main.c to keep a plain main(), so SDL2main
+# is not needed and -mconsole forces the console entry point.
+if(WIN32 AND MINGW)
+    target_link_options(crockpot_sim PRIVATE -mconsole)
+endif()
+
+# Provide Kconfig symbols that the firmware headers reference.
+# display_driver.h uses CONFIG_CROCKPOT_LCD_WIDTH/HEIGHT for LCD_H_RES/LCD_V_RES.
+# wifi.h uses CONFIG_CROCKPOT_WIFI_SSID/PASSWORD (not actually called in simulator).
+target_compile_definitions(crockpot_sim PRIVATE
+    CONFIG_CROCKPOT_LCD_WIDTH=480
+    CONFIG_CROCKPOT_LCD_HEIGHT=320
+    CONFIG_CROCKPOT_WIFI_SSID="sim_ssid"
+    CONFIG_CROCKPOT_WIFI_PASSWORD="sim_pass"
 )
 
 # Windows: copy SDL2.dll next to the executable

@@ -24,6 +24,8 @@
  *   Q / Esc   quit
  */
 
+/* Prevent SDL from renaming main→SDL_main; we provide a plain main(). */
+#define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdbool.h>

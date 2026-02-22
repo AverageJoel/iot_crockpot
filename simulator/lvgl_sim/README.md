@@ -28,17 +28,28 @@ no flash cycle required to iterate on the UI.
 
 ## Build
 
+**Windows (MSYS2 UCRT64 shell):**
 ```bash
 cd simulator/lvgl_sim
 mkdir build && cd build
-cmake .. -G "MinGW Makefiles"   # Windows/MSYS2
-# or: cmake .. -G "Ninja"
-# or: cmake ..                  # Linux/macOS (Makefile)
+cmake .. -G Ninja -DCMAKE_C_COMPILER=/c/msys64/ucrt64/bin/gcc.exe
+cmake --build .
+```
+
+**Linux / macOS:**
+```bash
+cd simulator/lvgl_sim
+mkdir build && cd build
+cmake ..
 cmake --build . --parallel
 ```
 
-First build downloads LVGL (~10 MB) and optionally SDL2. Subsequent builds
-are incremental and fast.
+First build downloads LVGL v9.2.2 (~10 MB via git) and optionally SDL2.
+Subsequent builds are incremental and fast.
+
+> **Windows note**: Run from the MSYS2 UCRT64 shell (not Git Bash or CMD) so
+> that cmake, ninja, and gcc are on `PATH`. Install prerequisites with:
+> `pacman -S mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-SDL2`
 
 ## Run
 
@@ -98,9 +109,8 @@ LVGL may not have rendered the first frame yet. Try clicking in the window to
 trigger an indev read, which forces a redraw.
 
 **Build error: `lv_conf.h` not found**
-Ensure you are building from `simulator/lvgl_sim/build/` (not from a parent
-directory). The `LV_CONF_PATH` in CMakeLists.txt is an absolute path derived
-from `CMAKE_CURRENT_SOURCE_DIR`.
+Ensure you are building from inside `simulator/lvgl_sim/build/` (not a parent
+directory). The simulator root is added to the include path by CMakeLists.txt.
 
 **SDL2 download fails (corporate proxy / no internet)**
 Install SDL2 via your system package manager, then re-run cmake — `find_package`
