@@ -31,10 +31,18 @@ typedef enum {
  */
 typedef struct {
     crockpot_state_t state;
-    float temperature_f;
-    uint32_t uptime_seconds;
-    bool wifi_connected;
-    bool sensor_error;
+    float            temperature_f;
+    uint32_t         uptime_seconds;
+    bool             wifi_connected;
+    bool             sensor_error;
+    bool             relay_main;               // main heating relay
+    bool             relay_aux;                // aux relay
+    bool             schedule_active;
+    char             schedule_name[32];
+    uint8_t          schedule_step;            // 0-based current step
+    uint8_t          schedule_total_steps;
+    uint32_t         schedule_step_remaining_s; // 0 = indefinite
+    float            schedule_step_progress;    // 0.0–1.0
 } crockpot_status_t;
 
 /**
@@ -139,6 +147,70 @@ typedef void (*crockpot_alert_cb_t)(crockpot_alert_t reason, float temp_f);
  * @param cb  Callback function, or NULL
  */
 void crockpot_set_alert_callback(crockpot_alert_cb_t cb);
+
+// ============================================================================
+// Temperature source hook
+// ============================================================================
+
+/**
+ * @brief Callback that provides the current temperature in °F.
+ *
+ * If registered, the control loop calls this instead of the hardware sensor.
+ * Useful for hardware-in-the-loop testing.  Pass NULL to use the real sensor.
+ */
+typedef float (*crockpot_temp_source_cb_t)(void *ctx);
+
+/**
+ * @brief Register a custom temperature source.
+ *
+ * @param cb   Callback, or NULL to use the hardware sensor
+ * @param ctx  Opaque pointer passed back to cb
+ */
+void crockpot_set_temp_source(crockpot_temp_source_cb_t cb, void *ctx);
+
+// ============================================================================
+// Schedule engine
+// ============================================================================
+
+/**
+ * @brief A single step in a cooking schedule.
+ */
+typedef struct {
+    crockpot_state_t state;
+    uint32_t         duration_s;  // 0 = indefinite (valid only for last step)
+} crockpot_schedule_step_t;
+
+/**
+ * @brief A named cooking schedule.
+ */
+typedef struct {
+    const char                     *name;
+    const crockpot_schedule_step_t *steps;
+    uint8_t                         num_steps;
+    bool                            repeat;
+} crockpot_schedule_t;
+
+/** Start a schedule (begins at step 0, sets state immediately). */
+void crockpot_schedule_start(const crockpot_schedule_t *sched);
+
+/** Stop the active schedule (does not change current heat state). */
+void crockpot_schedule_stop(void);
+
+/** Returns true if a schedule is currently running. */
+bool crockpot_schedule_is_active(void);
+
+/**
+ * @brief Advance the schedule clock by one second.
+ *
+ * Call this once per second from the FreeRTOS control task (firmware) or
+ * from a 1 s LVGL timer (simulator).  Handles step transitions automatically.
+ */
+void crockpot_tick_s(void);
+
+// ── Built-in schedule presets ──────────────────────────────────────────────
+extern const crockpot_schedule_t CROCKPOT_SCHED_SLOW_COOK;
+extern const crockpot_schedule_t CROCKPOT_SCHED_QUICK_WARM;
+extern const crockpot_schedule_t CROCKPOT_SCHED_ALL_DAY;
 
 #ifdef __cplusplus
 }

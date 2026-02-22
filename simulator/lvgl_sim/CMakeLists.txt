@@ -3,12 +3,13 @@ project(crockpot_sim C)
 
 set(CMAKE_C_STANDARD 11)
 
+include(FetchContent)
+
 # ── SDL2 ──────────────────────────────────────────────────────────────────────
 # Prefer a locally-installed SDL2; fall back to FetchContent.
 find_package(SDL2 QUIET CONFIG)
 if(NOT SDL2_FOUND)
     message(STATUS "SDL2 not found locally, fetching via FetchContent...")
-    include(FetchContent)
     FetchContent_Declare(
         SDL2
         URL      https://github.com/libsdl-org/SDL/releases/download/release-2.30.9/SDL2-2.30.9.zip
@@ -27,7 +28,6 @@ else()
 endif()
 
 # ── LVGL v9 ───────────────────────────────────────────────────────────────────
-include(FetchContent)
 FetchContent_Declare(
     lvgl
     GIT_REPOSITORY https://github.com/lvgl/lvgl.git
@@ -54,6 +54,16 @@ set_source_files_properties(
     PROPERTIES HEADER_FILE_ONLY TRUE
 )
 
+# ── Mongoose v7 (HTTP client/server + TLS) ────────────────────────────────────
+FetchContent_Declare(
+    mongoose
+    GIT_REPOSITORY https://github.com/cesanta/mongoose.git
+    GIT_TAG        7.14
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(mongoose)
+# Mongoose is a single .c + .h — compile the .c directly into the executable
+
 # ── Simulator executable ──────────────────────────────────────────────────────
 set(FIRMWARE_MAIN "${CMAKE_CURRENT_SOURCE_DIR}/../../firmware/main")
 
@@ -63,6 +73,10 @@ add_executable(crockpot_sim
     stubs/wifi.c
     stubs/display_driver.c
     stubs/esp_timer.c
+    stubs/datalog.c
+    stubs/web_server.c
+    stubs/telegram.c
+    ${mongoose_SOURCE_DIR}/mongoose.c
     ${FIRMWARE_MAIN}/gui.c
 )
 
@@ -70,22 +84,26 @@ add_executable(crockpot_sim
 #   1. simulator root    — lv_conf.h
 #   2. stubs/            — shadow ESP-IDF headers (esp_log.h, wifi.h, etc.)
 #   3. firmware/main/    — gui.h, crockpot.h, gui.c's own #includes
+#   4. mongoose source   — mongoose.h
 target_include_directories(crockpot_sim PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/stubs
     ${FIRMWARE_MAIN}
+    ${mongoose_SOURCE_DIR}
 )
 
 target_link_libraries(crockpot_sim PRIVATE
     lvgl
     ${SDL2_TARGET}
+    m          # math (fminf etc.)
 )
 
-# On Windows, SDL2 normally renames main→SDL_main via SDL_main.h.
-# We define SDL_MAIN_HANDLED in main.c to keep a plain main(), so SDL2main
-# is not needed and -mconsole forces the console entry point.
-if(WIN32 AND MINGW)
-    target_link_options(crockpot_sim PRIVATE -mconsole)
+# On Windows, link winsock2 (required by mongoose) and force console entry point
+if(WIN32)
+    target_link_libraries(crockpot_sim PRIVATE ws2_32)
+    if(MINGW)
+        target_link_options(crockpot_sim PRIVATE -mconsole)
+    endif()
 endif()
 
 # Provide Kconfig symbols that the firmware headers reference.
@@ -96,6 +114,11 @@ target_compile_definitions(crockpot_sim PRIVATE
     CONFIG_CROCKPOT_LCD_HEIGHT=320
     CONFIG_CROCKPOT_WIFI_SSID="sim_ssid"
     CONFIG_CROCKPOT_WIFI_PASSWORD="sim_pass"
+    # Mongoose TLS: NONE disables TLS (HTTP server still works; Telegram needs TLS).
+    # To enable Telegram, install openssl and set MG_TLS=MG_TLS_OPENSSL here,
+    # then add OpenSSL to target_link_libraries.
+    MG_TLS=MG_TLS_NONE
+    MG_ENABLE_LOG=0
 )
 
 # Windows: copy SDL2.dll next to the executable

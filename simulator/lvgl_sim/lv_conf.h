@@ -89,7 +89,7 @@
 #define LV_USE_SLIDER     0
 #define LV_USE_SWITCH     0
 #define LV_USE_TEXTAREA   0
-#define LV_USE_CHART      0
+#define LV_USE_CHART      1
 #define LV_USE_METER      0
 #define LV_USE_MSGBOX     0
 #define LV_USE_SPINBOX    0
@@ -100,7 +100,7 @@
 #define LV_USE_SPAN       0
 #define LV_USE_CALENDAR   0
 #define LV_USE_KEYBOARD   0
-#define LV_USE_LIST       0
+#define LV_USE_LIST       1
 #define LV_USE_MENU       0
 
 /* ── Animation ───────────────────────────────────────────────────────────── */

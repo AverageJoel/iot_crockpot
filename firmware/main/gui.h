@@ -29,10 +29,13 @@ extern "C" {
  * @brief GUI screen identifiers
  */
 typedef enum {
-    GUI_SCREEN_MAIN,        // Temperature + heat controls
-    GUI_SCREEN_SETTINGS,    // Units toggle, misc settings
-    GUI_SCREEN_WIFI,        // Connection status + IP
-    GUI_SCREEN_INFO,        // Uptime, firmware version, chip
+    GUI_SCREEN_MAIN,            // Temperature + heat controls
+    GUI_SCREEN_SETTINGS,        // Units toggle, misc settings
+    GUI_SCREEN_WIFI,            // Connection status + IP
+    GUI_SCREEN_INFO,            // Uptime, firmware version, chip
+    GUI_SCREEN_HISTORY,         // Temperature history chart
+    GUI_SCREEN_SCHEDULES,       // Schedule preset list
+    GUI_SCREEN_SCHEDULE_BUILD,  // Custom schedule builder
     GUI_SCREEN_COUNT
 } gui_screen_t;
 

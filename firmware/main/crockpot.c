@@ -28,7 +28,9 @@ static crockpot_status_t s_status = {
     .temperature_f = 0.0f,
     .uptime_seconds = 0,
     .wifi_connected = false,
-    .sensor_error = false
+    .sensor_error = false,
+    .relay_main = false,
+    .relay_aux  = false,
 };
 
 // Boot timestamp for uptime calculation
@@ -37,9 +39,70 @@ static int64_t s_boot_time_us = 0;
 // Safety alert callback (set by caller, fired on auto-shutoff)
 static crockpot_alert_cb_t s_alert_cb = NULL;
 
+// Custom temperature source (NULL → use real sensor)
+static crockpot_temp_source_cb_t s_temp_source_cb  = NULL;
+static void                     *s_temp_source_ctx  = NULL;
+
+// ── Schedule state ────────────────────────────────────────────────────────
+static const crockpot_schedule_t *s_schedule              = NULL;
+static uint8_t                    s_sched_step             = 0;
+static uint32_t                   s_sched_step_elapsed_s   = 0;
+
+// ── Built-in schedule preset definitions ─────────────────────────────────
+
+static const crockpot_schedule_step_t k_slow_cook_steps[] = {
+    { CROCKPOT_HIGH, 3600        },   // 1 h HIGH
+    { CROCKPOT_LOW,  6 * 3600    },   // 6 h LOW
+    { CROCKPOT_WARM, 0           },   // indefinite WARM
+};
+const crockpot_schedule_t CROCKPOT_SCHED_SLOW_COOK = {
+    .name      = "Slow Cook",
+    .steps     = k_slow_cook_steps,
+    .num_steps = 3,
+    .repeat    = false,
+};
+
+static const crockpot_schedule_step_t k_quick_warm_steps[] = {
+    { CROCKPOT_HIGH, 30 * 60  },   // 30 min HIGH
+    { CROCKPOT_WARM, 0        },   // indefinite WARM
+};
+const crockpot_schedule_t CROCKPOT_SCHED_QUICK_WARM = {
+    .name      = "Quick Warm",
+    .steps     = k_quick_warm_steps,
+    .num_steps = 2,
+    .repeat    = false,
+};
+
+static const crockpot_schedule_step_t k_all_day_steps[] = {
+    { CROCKPOT_LOW,  8 * 3600 },   // 8 h LOW
+    { CROCKPOT_WARM, 0        },   // indefinite WARM
+};
+const crockpot_schedule_t CROCKPOT_SCHED_ALL_DAY = {
+    .name      = "All Day",
+    .steps     = k_all_day_steps,
+    .num_steps = 2,
+    .repeat    = false,
+};
+
+// ── Helper: update relay_main/aux in s_status to match current state ──────
+// Called inside the mutex.
+static void update_relay_status_locked(void)
+{
+    s_status.relay_main = (s_status.state == CROCKPOT_LOW  ||
+                           s_status.state == CROCKPOT_HIGH);
+    s_status.relay_aux  = (s_status.state == CROCKPOT_WARM ||
+                           s_status.state == CROCKPOT_HIGH);
+}
+
 void crockpot_set_alert_callback(crockpot_alert_cb_t cb)
 {
     s_alert_cb = cb;
+}
+
+void crockpot_set_temp_source(crockpot_temp_source_cb_t cb, void *ctx)
+{
+    s_temp_source_cb  = cb;
+    s_temp_source_ctx = ctx;
 }
 
 bool crockpot_init(void)
@@ -81,6 +144,36 @@ crockpot_status_t crockpot_get_status(void)
 
     if (xSemaphoreTake(s_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         status = s_status;
+
+        // Populate schedule fields from schedule state
+        status.schedule_active      = (s_schedule != NULL);
+        status.schedule_step        = s_sched_step;
+        status.schedule_total_steps = s_schedule ? s_schedule->num_steps : 0;
+
+        if (s_schedule) {
+            strncpy(status.schedule_name, s_schedule->name,
+                    sizeof(status.schedule_name) - 1);
+            status.schedule_name[sizeof(status.schedule_name) - 1] = '\0';
+
+            const crockpot_schedule_step_t *step =
+                &s_schedule->steps[s_sched_step];
+            if (step->duration_s > 0) {
+                uint32_t elapsed = s_sched_step_elapsed_s;
+                status.schedule_step_remaining_s =
+                    (elapsed < step->duration_s)
+                    ? (step->duration_s - elapsed) : 0;
+                status.schedule_step_progress =
+                    (float)elapsed / step->duration_s;
+            } else {
+                status.schedule_step_remaining_s = 0;
+                status.schedule_step_progress    = 0.0f;
+            }
+        } else {
+            status.schedule_name[0]             = '\0';
+            status.schedule_step_remaining_s    = 0;
+            status.schedule_step_progress       = 0.0f;
+        }
+
         xSemaphoreGive(s_state_mutex);
     } else {
         // Return last known state on timeout
@@ -107,6 +200,7 @@ bool crockpot_set_state(crockpot_state_t state)
     }
 
     s_status.state = state;
+    update_relay_status_locked();
     xSemaphoreGive(s_state_mutex);
 
     ESP_LOGI(TAG, "State changed to: %s", crockpot_state_to_string(state));
@@ -150,6 +244,92 @@ bool crockpot_state_from_string(const char* str, crockpot_state_t* out)
     return false;
 }
 
+// ============================================================================
+// Schedule API
+// ============================================================================
+
+void crockpot_schedule_start(const crockpot_schedule_t *sched)
+{
+    if (!sched || sched->num_steps == 0) return;
+
+    if (xSemaphoreTake(s_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        s_schedule            = sched;
+        s_sched_step          = 0;
+        s_sched_step_elapsed_s = 0;
+        xSemaphoreGive(s_state_mutex);
+    }
+
+    crockpot_set_state(sched->steps[0].state);
+    ESP_LOGI(TAG, "Schedule '%s' started", sched->name);
+}
+
+void crockpot_schedule_stop(void)
+{
+    if (xSemaphoreTake(s_state_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        s_schedule = NULL;
+        xSemaphoreGive(s_state_mutex);
+    }
+    ESP_LOGI(TAG, "Schedule stopped");
+}
+
+bool crockpot_schedule_is_active(void)
+{
+    return s_schedule != NULL;
+}
+
+void crockpot_tick_s(void)
+{
+    if (xSemaphoreTake(s_state_mutex, pdMS_TO_TICKS(100)) != pdTRUE) return;
+
+    if (!s_schedule) {
+        xSemaphoreGive(s_state_mutex);
+        return;
+    }
+
+    s_sched_step_elapsed_s++;
+
+    const crockpot_schedule_step_t *step = &s_schedule->steps[s_sched_step];
+
+    // Indefinite step — never advance
+    if (step->duration_s == 0) {
+        xSemaphoreGive(s_state_mutex);
+        return;
+    }
+
+    if (s_sched_step_elapsed_s >= step->duration_s) {
+        s_sched_step++;
+        s_sched_step_elapsed_s = 0;
+
+        if (s_sched_step >= s_schedule->num_steps) {
+            if (s_schedule->repeat) {
+                s_sched_step = 0;
+                crockpot_state_t next_state = s_schedule->steps[0].state;
+                xSemaphoreGive(s_state_mutex);
+                crockpot_set_state(next_state);
+                return;
+            } else {
+                s_schedule = NULL;
+                xSemaphoreGive(s_state_mutex);
+                ESP_LOGI(TAG, "Schedule completed");
+                return;
+            }
+        }
+
+        crockpot_state_t next_state = s_schedule->steps[s_sched_step].state;
+        xSemaphoreGive(s_state_mutex);
+        crockpot_set_state(next_state);
+        ESP_LOGI(TAG, "Schedule step -> %d (%s)",
+                 s_sched_step, crockpot_state_to_string(next_state));
+        return;
+    }
+
+    xSemaphoreGive(s_state_mutex);
+}
+
+// ============================================================================
+// Control task
+// ============================================================================
+
 void crockpot_control_task(void* pvParameters)
 {
     ESP_LOGI(TAG, "Control task started");
@@ -166,8 +346,15 @@ void crockpot_control_task(void* pvParameters)
     static int sensor_error_count = 0;
 
     while (1) {
-        // Read temperature before taking the mutex (SPI read, may take ~1 ms)
-        temperature_reading_t reading = temperature_read();
+        // Read temperature: use hook if registered, otherwise hardware sensor
+        temperature_reading_t reading;
+        if (s_temp_source_cb) {
+            reading.temperature_f = s_temp_source_cb(s_temp_source_ctx);
+            reading.valid = true;
+        } else {
+            // Read before taking the mutex (SPI read, may take ~1 ms)
+            reading = temperature_read();
+        }
 
         // Flags set inside mutex, callbacks fired after releasing it
         bool temp_shutoff   = false;
@@ -198,7 +385,9 @@ void crockpot_control_task(void* pvParameters)
                 ESP_LOGW(TAG, "SAFETY: Temperature %.1f F exceeds limit, shutting off",
                          reading.temperature_f);
                 s_status.state = CROCKPOT_OFF;
+                s_schedule = NULL;   // cancel active schedule
                 relay_all_off();
+                update_relay_status_locked();
                 temp_shutoff = true;
             }
 
@@ -209,7 +398,9 @@ void crockpot_control_task(void* pvParameters)
                     ESP_LOGW(TAG, "SAFETY: Persistent sensor error (%d consecutive), shutting off",
                              sensor_error_count);
                     s_status.state = CROCKPOT_OFF;
+                    s_schedule = NULL;   // cancel active schedule
                     relay_all_off();
+                    update_relay_status_locked();
                     sensor_error_count = 0;
                     sensor_shutoff = true;
                 }
@@ -225,6 +416,9 @@ void crockpot_control_task(void* pvParameters)
         if (sensor_shutoff && s_alert_cb) {
             s_alert_cb(CROCKPOT_ALERT_SENSOR_ERROR, reading.temperature_f);
         }
+
+        // Advance schedule clock
+        crockpot_tick_s();
 
         // Feed the task watchdog
         esp_task_wdt_reset();

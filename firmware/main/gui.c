@@ -95,6 +95,9 @@ static lv_obj_t *s_scr_main;
 static lv_obj_t *s_scr_settings;
 static lv_obj_t *s_scr_wifi;
 static lv_obj_t *s_scr_info;
+static lv_obj_t *s_scr_history;
+static lv_obj_t *s_scr_schedules;
+static lv_obj_t *s_scr_schedule_build;
 
 // Main screen — widgets that need periodic updates
 static lv_obj_t *s_arc;            // State indicator arc
@@ -113,6 +116,53 @@ static lv_obj_t *s_wifi_lbl_ip;     // "192.168.1.42"
 
 // Info screen — dynamic
 static lv_obj_t *s_info_lbl_uptime; // "Uptime: 0d 00:00"
+
+// History screen
+#define HISTORY_POINTS 120
+static lv_obj_t           *s_chart;
+static lv_chart_series_t  *s_chart_series;
+static lv_obj_t           *s_lbl_hist_min;
+static lv_obj_t           *s_lbl_hist_current;
+static lv_obj_t           *s_lbl_hist_max;
+static float               s_hist_min      = 9999.0f;
+static float               s_hist_max      = -9999.0f;
+static uint32_t            s_hist_ticks    = 0;   // incremented each timer call
+
+// Main screen relay indicator dots
+static lv_obj_t *s_dot_relay_m;
+static lv_obj_t *s_dot_relay_a;
+
+// Main screen schedule status bar
+static lv_obj_t *s_sched_bar;
+static lv_obj_t *s_sched_bar_lbl;
+
+// Schedule screen
+static lv_obj_t *s_sched_stop_btn;     // "Stop Schedule" — shown only when active
+
+// Schedule builder data
+#define BUILD_MAX_STEPS 6
+typedef struct {
+    crockpot_state_t state;
+    uint8_t          hours;       // 0–23
+    uint8_t          minutes;     // 0, 15, 30, or 45
+} build_step_t;
+
+static build_step_t  s_build_steps[BUILD_MAX_STEPS];
+static uint8_t       s_build_step_count = 2;
+
+// Persistent custom schedule (pointers stay valid while schedule runs)
+static crockpot_schedule_step_t s_custom_sched_steps[BUILD_MAX_STEPS];
+static crockpot_schedule_t      s_custom_schedule = {
+    .name      = "Custom",
+    .steps     = s_custom_sched_steps,
+    .num_steps = 0,
+    .repeat    = false,
+};
+
+// Builder row widgets (state label + duration label per step)
+static lv_obj_t *s_build_state_lbl[BUILD_MAX_STEPS];
+static lv_obj_t *s_build_dur_lbl[BUILD_MAX_STEPS];
+static lv_obj_t *s_build_scroll;   // scrollable container for step rows
 
 // Toast overlay (created on lv_layer_top, lives above all screens)
 static lv_obj_t   *s_toast       = NULL;
@@ -221,6 +271,30 @@ static void nav_back_cb(lv_event_t *e)
     lv_screen_load_anim(s_scr_main, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
 }
 
+static void nav_history_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    s_current = GUI_SCREEN_HISTORY;
+    lv_screen_load_anim(s_scr_history, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+
+static void nav_schedules_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    s_current = GUI_SCREEN_SCHEDULES;
+    lv_screen_load_anim(s_scr_schedules, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+
+static void nav_schedule_build_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    s_current = GUI_SCREEN_SCHEDULE_BUILD;
+    lv_screen_load_anim(s_scr_schedule_build, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+
 static void cf_toggle_cb(lv_event_t *e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -228,6 +302,145 @@ static void cf_toggle_cb(lv_event_t *e)
     s_config.show_temperature_c = !s_config.show_temperature_c;
     lv_label_set_text(s_cf_lbl,
         s_config.show_temperature_c ? "Units: Celsius (°C)" : "Units: Fahrenheit (°F)");
+}
+
+// ── Schedule preset button callback ──────────────────────────────────────────
+
+static void sched_preset_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    const crockpot_schedule_t *sched =
+        (const crockpot_schedule_t *)lv_event_get_user_data(e);
+    crockpot_schedule_start(sched);
+
+    // Show confirmation toast and return to main
+    char msg[48];
+    snprintf(msg, sizeof(msg), "Started: %s", sched->name);
+    gui_show_message(msg, 3000);
+    s_current = GUI_SCREEN_MAIN;
+    lv_screen_load_anim(s_scr_main, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
+}
+
+static void sched_stop_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    crockpot_schedule_stop();
+    gui_show_message("Schedule stopped", 2000);
+}
+
+// ── Schedule builder callbacks ────────────────────────────────────────────────
+
+static void build_refresh_step(int idx);   // forward declaration
+
+static void build_state_cycle_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    int idx = (int)(uintptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= s_build_step_count) return;
+
+    // Cycle OFF → WARM → LOW → HIGH → OFF
+    s_build_steps[idx].state =
+        (crockpot_state_t)((s_build_steps[idx].state + 1) % 4);
+    build_refresh_step(idx);
+}
+
+static void build_hours_up_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    int idx = (int)(uintptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= s_build_step_count - 1) return;  // last step is indefinite
+    s_build_steps[idx].hours =
+        (uint8_t)((s_build_steps[idx].hours + 1) % 24);
+    build_refresh_step(idx);
+}
+
+static void build_hours_dn_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    int idx = (int)(uintptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= s_build_step_count - 1) return;
+    s_build_steps[idx].hours =
+        (uint8_t)((s_build_steps[idx].hours + 23) % 24);
+    build_refresh_step(idx);
+}
+
+static void build_min_up_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    int idx = (int)(uintptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= s_build_step_count - 1) return;
+    s_build_steps[idx].minutes =
+        (uint8_t)((s_build_steps[idx].minutes + 15) % 60);
+    build_refresh_step(idx);
+}
+
+static void build_min_dn_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    int idx = (int)(uintptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= s_build_step_count - 1) return;
+    s_build_steps[idx].minutes =
+        (uint8_t)((s_build_steps[idx].minutes + 45) % 60);
+    build_refresh_step(idx);
+}
+
+// Forward declaration — defined later in the file
+static void create_schedule_build_screen(void);
+
+static void build_add_step_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    if (s_build_step_count >= BUILD_MAX_STEPS) return;
+    // Insert a new step before the last (indefinite) step, then shift last down
+    int last = s_build_step_count - 1;
+    s_build_steps[last + 1] = s_build_steps[last];     // copy last (indefinite)
+    s_build_steps[last].state   = CROCKPOT_LOW;
+    s_build_steps[last].hours   = 1;
+    s_build_steps[last].minutes = 0;
+    s_build_step_count++;
+    // Delete the old screen and rebuild with the new step count
+    lv_obj_delete(s_scr_schedule_build);
+    s_scr_schedule_build = NULL;
+    create_schedule_build_screen();
+    s_current = GUI_SCREEN_SCHEDULE_BUILD;
+    lv_screen_load(s_scr_schedule_build);
+}
+
+static void build_start_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    if (s_build_step_count == 0) return;
+
+    // Build the crockpot_schedule_t from UI data
+    for (int i = 0; i < s_build_step_count; i++) {
+        s_custom_sched_steps[i].state = s_build_steps[i].state;
+        // Last step is indefinite
+        if (i == s_build_step_count - 1) {
+            s_custom_sched_steps[i].duration_s = 0;
+        } else {
+            s_custom_sched_steps[i].duration_s =
+                (uint32_t)s_build_steps[i].hours * 3600 +
+                (uint32_t)s_build_steps[i].minutes * 60;
+            // Ensure at least 60s per non-last step
+            if (s_custom_sched_steps[i].duration_s < 60)
+                s_custom_sched_steps[i].duration_s = 60;
+        }
+    }
+    s_custom_schedule.num_steps = s_build_step_count;
+
+    crockpot_schedule_start(&s_custom_schedule);
+    gui_show_message("Custom schedule started", 3000);
+    s_current = GUI_SCREEN_MAIN;
+    lv_screen_load_anim(s_scr_main, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 200, 0, false);
 }
 
 // ============================================================================
@@ -335,12 +548,71 @@ static void create_main_screen(void)
     lv_obj_set_style_text_color(s_lbl_state, COL_OFF, LV_PART_MAIN);
     lv_obj_align(s_lbl_state, LV_ALIGN_TOP_MID, 0, STATE_LBL_Y);
 
+    // ── Relay indicator dots (top-right of screen, arc level) ────────────────
+    // "M" = main relay,  "A" = aux relay
+    // Label on left, colored 10×10 dot on right of label
+    {
+        int32_t rx = 450, ry = 12;
+        lv_obj_t *lbl_m = lv_label_create(s_scr_main);
+        lv_label_set_text(lbl_m, "M");
+        lv_obj_set_style_text_color(lbl_m, COL_TEXT_DIM, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl_m, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_pos(lbl_m, rx - 24, ry);
+
+        s_dot_relay_m = lv_obj_create(s_scr_main);
+        lv_obj_set_size(s_dot_relay_m, 10, 10);
+        lv_obj_set_pos(s_dot_relay_m, rx - 8, ry + 2);
+        lv_obj_set_style_bg_color(s_dot_relay_m, COL_OFF, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(s_dot_relay_m, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(s_dot_relay_m, 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(s_dot_relay_m, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_clear_flag(s_dot_relay_m, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+        lv_obj_t *lbl_a = lv_label_create(s_scr_main);
+        lv_label_set_text(lbl_a, "A");
+        lv_obj_set_style_text_color(lbl_a, COL_TEXT_DIM, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl_a, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_pos(lbl_a, rx - 24, ry + 20);
+
+        s_dot_relay_a = lv_obj_create(s_scr_main);
+        lv_obj_set_size(s_dot_relay_a, 10, 10);
+        lv_obj_set_pos(s_dot_relay_a, rx - 8, ry + 22);
+        lv_obj_set_style_bg_color(s_dot_relay_a, COL_OFF, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(s_dot_relay_a, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(s_dot_relay_a, 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(s_dot_relay_a, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+        lv_obj_clear_flag(s_dot_relay_a, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    }
+
     // ── Temperature label ────────────────────────────────────────────────────
     s_lbl_temp = lv_label_create(s_scr_main);
     lv_label_set_text(s_lbl_temp, "---.-\xC2\xB0""F");   // ---.-°F
     lv_obj_set_style_text_font(s_lbl_temp, &lv_font_montserrat_28, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_lbl_temp, COL_TEXT, LV_PART_MAIN);
     lv_obj_align(s_lbl_temp, LV_ALIGN_TOP_MID, 0, TEMP_Y);
+    // Tap temp label to navigate to history screen
+    lv_obj_add_flag(s_lbl_temp, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_lbl_temp, nav_history_cb, LV_EVENT_CLICKED, NULL);
+
+    // ── Schedule status bar (between temp and buttons) ───────────────────────
+    // y=190, height=24; hidden until a schedule is active
+    s_sched_bar = lv_obj_create(s_scr_main);
+    lv_obj_set_pos(s_sched_bar, 0, 190);
+    lv_obj_set_size(s_sched_bar, 480, 24);
+    lv_obj_set_style_bg_color(s_sched_bar, lv_color_hex(0x1e3a5f), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_sched_bar, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_sched_bar, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_sched_bar, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(s_sched_bar, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_sched_bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_sched_bar, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(s_sched_bar, nav_schedules_cb, LV_EVENT_CLICKED, NULL);
+
+    s_sched_bar_lbl = lv_label_create(s_sched_bar);
+    lv_label_set_text(s_sched_bar_lbl, "");
+    lv_obj_set_style_text_color(s_sched_bar_lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_sched_bar_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(s_sched_bar_lbl, LV_ALIGN_CENTER, 0, 0);
 
     // ── Heat control buttons (OFF / WARM / LOW / HIGH) ───────────────────────
     for (int i = 0; i < 4; i++) {
@@ -399,13 +671,18 @@ static void create_main_screen(void)
 
     // Settings button (⚙)
     lv_obj_t *set_btn = make_icon_btn(sbar, LV_SYMBOL_SETTINGS,
-                                      LV_ALIGN_RIGHT_MID, -48, 0);
+                                      LV_ALIGN_RIGHT_MID, -90, 0);
     lv_obj_add_event_cb(set_btn, nav_settings_cb, LV_EVENT_CLICKED, NULL);
 
     // Info button (≡)
     lv_obj_t *info_btn = make_icon_btn(sbar, LV_SYMBOL_LIST,
-                                       LV_ALIGN_RIGHT_MID, -6, 0);
+                                       LV_ALIGN_RIGHT_MID, -48, 0);
     lv_obj_add_event_cb(info_btn, nav_info_cb, LV_EVENT_CLICKED, NULL);
+
+    // Schedule button (calendar icon)
+    lv_obj_t *sched_btn = make_icon_btn(sbar, LV_SYMBOL_BULLET,
+                                        LV_ALIGN_RIGHT_MID, -6, 0);
+    lv_obj_add_event_cb(sched_btn, nav_schedules_cb, LV_EVENT_CLICKED, NULL);
 }
 
 // ============================================================================
@@ -506,6 +783,372 @@ static void create_info_screen(void)
 }
 
 // ============================================================================
+// History screen
+// ============================================================================
+
+static void create_history_screen(void)
+{
+    s_scr_history = lv_obj_create(NULL);
+    style_screen(s_scr_history);
+
+    add_screen_title(s_scr_history, "Temperature History");
+
+    // Chart — 480×220, below title
+    s_chart = lv_chart_create(s_scr_history);
+    lv_obj_set_size(s_chart, 460, 200);
+    lv_obj_align(s_chart, LV_ALIGN_TOP_MID, 0, 44);
+    lv_chart_set_type(s_chart, LV_CHART_TYPE_LINE);
+    lv_chart_set_point_count(s_chart, HISTORY_POINTS);
+    lv_chart_set_range(s_chart, LV_CHART_AXIS_PRIMARY_Y, 60, 320);
+    lv_obj_set_style_bg_color(s_chart, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_chart, COL_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_chart, 1, LV_PART_MAIN);
+    lv_obj_clear_flag(s_chart, LV_OBJ_FLAG_SCROLLABLE);
+
+    s_chart_series = lv_chart_add_series(s_chart, COL_ACCENT,
+                                         LV_CHART_AXIS_PRIMARY_Y);
+
+    // Initialize all points to the "no data" value
+    lv_chart_set_all_value(s_chart, s_chart_series, LV_CHART_POINT_NONE);
+
+    // Min / current / max labels at bottom
+    s_lbl_hist_min = lv_label_create(s_scr_history);
+    lv_label_set_text(s_lbl_hist_min, "Min: --");
+    lv_obj_set_style_text_color(s_lbl_hist_min, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_lbl_hist_min, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(s_lbl_hist_min, LV_ALIGN_BOTTOM_LEFT, 10, -8);
+
+    s_lbl_hist_current = lv_label_create(s_scr_history);
+    lv_label_set_text(s_lbl_hist_current, "Now: --");
+    lv_obj_set_style_text_color(s_lbl_hist_current, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_lbl_hist_current, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(s_lbl_hist_current, LV_ALIGN_BOTTOM_MID, 0, -8);
+
+    s_lbl_hist_max = lv_label_create(s_scr_history);
+    lv_label_set_text(s_lbl_hist_max, "Max: --");
+    lv_obj_set_style_text_color(s_lbl_hist_max, COL_ERROR, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_lbl_hist_max, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(s_lbl_hist_max, LV_ALIGN_BOTTOM_RIGHT, -10, -8);
+}
+
+// ============================================================================
+// Schedules screen
+// ============================================================================
+
+static lv_obj_t *make_sched_btn(lv_obj_t *parent,
+                                 const crockpot_schedule_t *sched,
+                                 int32_t y)
+{
+    lv_obj_t *btn = lv_button_create(parent);
+    lv_obj_set_size(btn, 440, 48);
+    lv_obj_align(btn, LV_ALIGN_TOP_MID, 0, y);
+    lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(btn, COL_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);
+    lv_obj_add_event_cb(btn, sched_preset_cb, LV_EVENT_CLICKED,
+                        (void *)sched);
+
+    // Build label: "▶ Name  N steps • STATE→..."
+    char text[80];
+    char steps_str[40] = "";
+    for (int i = 0; i < sched->num_steps && i < 4; i++) {
+        if (i > 0) {
+            size_t len = strlen(steps_str);
+            if (len < sizeof(steps_str) - 3)
+                strcat(steps_str, "\xe2\x86\x92");  // UTF-8 →
+        }
+        size_t len = strlen(steps_str);
+        if (len < sizeof(steps_str) - 5)
+            strncat(steps_str,
+                    crockpot_state_to_string(sched->steps[i].state),
+                    sizeof(steps_str) - len - 1);
+    }
+    snprintf(text, sizeof(text), "\xe2\x96\xb6 %-14s  %d steps \xe2\x80\xa2 %s",
+             sched->name, sched->num_steps, steps_str);
+
+    lv_obj_t *lbl = lv_label_create(btn);
+    lv_label_set_text(lbl, text);
+    lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(lbl, LV_ALIGN_LEFT_MID, 8, 0);
+
+    return btn;
+}
+
+static void create_schedules_screen(void)
+{
+    s_scr_schedules = lv_obj_create(NULL);
+    style_screen(s_scr_schedules);
+
+    add_screen_title(s_scr_schedules, LV_SYMBOL_BULLET "  Schedules");
+
+    int32_t y = 52;
+    make_sched_btn(s_scr_schedules, &CROCKPOT_SCHED_SLOW_COOK,  y); y += 56;
+    make_sched_btn(s_scr_schedules, &CROCKPOT_SCHED_QUICK_WARM, y); y += 56;
+    make_sched_btn(s_scr_schedules, &CROCKPOT_SCHED_ALL_DAY,    y); y += 56;
+
+    // "Custom..." button → builder
+    lv_obj_t *cust_btn = lv_button_create(s_scr_schedules);
+    lv_obj_set_size(cust_btn, 440, 36);
+    lv_obj_align(cust_btn, LV_ALIGN_TOP_MID, 0, y);
+    lv_obj_set_style_bg_color(cust_btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(cust_btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(cust_btn, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_border_width(cust_btn, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(cust_btn, 8, LV_PART_MAIN);
+    lv_obj_add_event_cb(cust_btn, nav_schedule_build_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *cust_lbl = lv_label_create(cust_btn);
+    lv_label_set_text(cust_lbl, "Custom...");
+    lv_obj_set_style_text_color(cust_lbl, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(cust_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_center(cust_lbl);
+    y += 44;
+
+    // "Stop Schedule" — hidden by default, shown when schedule active
+    s_sched_stop_btn = lv_button_create(s_scr_schedules);
+    lv_obj_set_size(s_sched_stop_btn, 200, 40);
+    lv_obj_align(s_sched_stop_btn, LV_ALIGN_TOP_MID, 0, y);
+    lv_obj_set_style_bg_color(s_sched_stop_btn, COL_ERROR, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(s_sched_stop_btn, lv_color_hex(0xcc0000),
+                              LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(s_sched_stop_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_sched_stop_btn, 8, LV_PART_MAIN);
+    lv_obj_add_event_cb(s_sched_stop_btn, sched_stop_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(s_sched_stop_btn, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t *stop_lbl = lv_label_create(s_sched_stop_btn);
+    lv_label_set_text(stop_lbl, "Stop Schedule");
+    lv_obj_set_style_text_color(stop_lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(stop_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_center(stop_lbl);
+
+    add_back_button(s_scr_schedules);
+}
+
+// ============================================================================
+// Schedule builder screen
+// ============================================================================
+
+// Forward: refresh a single step row's labels
+static void build_refresh_step(int idx)
+{
+    if (idx < 0 || idx >= s_build_step_count) return;
+    if (!s_build_state_lbl[idx] || !s_build_dur_lbl[idx]) return;
+
+    lv_label_set_text(s_build_state_lbl[idx],
+                      crockpot_state_to_string(s_build_steps[idx].state));
+    lv_obj_set_style_text_color(s_build_state_lbl[idx],
+        get_state_color(s_build_steps[idx].state), LV_PART_MAIN);
+
+    // Last step is always indefinite
+    if (idx == s_build_step_count - 1) {
+        lv_label_set_text(s_build_dur_lbl[idx], "indefinite");
+    } else {
+        char dur[16];
+        snprintf(dur, sizeof(dur), "%02uh %02um",
+                 s_build_steps[idx].hours,
+                 s_build_steps[idx].minutes);
+        lv_label_set_text(s_build_dur_lbl[idx], dur);
+    }
+}
+
+static lv_obj_t *make_small_btn(lv_obj_t *parent, const char *txt,
+                                 int32_t x, int32_t y,
+                                 lv_event_cb_t cb, void *user_data)
+{
+    lv_obj_t *btn = lv_button_create(parent);
+    lv_obj_set_size(btn, 28, 28);
+    lv_obj_set_pos(btn, x, y);
+    lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(btn, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(btn, 4, LV_PART_MAIN);
+    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, user_data);
+
+    lv_obj_t *lbl = lv_label_create(btn);
+    lv_label_set_text(lbl, txt);
+    lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_center(lbl);
+    return btn;
+}
+
+static void create_schedule_build_screen(void)
+{
+    // Initialize default build steps on first call (or after reset)
+    static bool initialized = false;
+    if (!initialized) {
+        s_build_step_count = 2;
+        s_build_steps[0] = (build_step_t){ CROCKPOT_HIGH, 1, 0 };
+        s_build_steps[1] = (build_step_t){ CROCKPOT_WARM, 0, 0 };
+        initialized = true;
+    }
+
+    s_scr_schedule_build = lv_obj_create(NULL);
+    style_screen(s_scr_schedule_build);
+
+    // Title
+    lv_obj_t *title = lv_label_create(s_scr_schedule_build);
+    lv_label_set_text(title, "Custom Schedule");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, COL_ACCENT, LV_PART_MAIN);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 10, 10);
+
+    // "▶ Start" button top-right
+    lv_obj_t *start_btn = lv_button_create(s_scr_schedule_build);
+    lv_obj_set_size(start_btn, 100, 36);
+    lv_obj_align(start_btn, LV_ALIGN_TOP_RIGHT, -8, 6);
+    lv_obj_set_style_bg_color(start_btn, COL_SUCCESS, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(start_btn, lv_color_hex(0x009933),
+                              LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(start_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(start_btn, 8, LV_PART_MAIN);
+    lv_obj_add_event_cb(start_btn, build_start_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *start_lbl = lv_label_create(start_btn);
+    lv_label_set_text(start_lbl, "\xe2\x96\xb6 Start");
+    lv_obj_set_style_text_color(start_lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(start_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_center(start_lbl);
+
+    // Back button top-left of bottom area
+    lv_obj_t *back_btn = lv_button_create(s_scr_schedule_build);
+    lv_obj_set_size(back_btn, 80, 36);
+    lv_obj_align(back_btn, LV_ALIGN_TOP_LEFT, 8, 6);
+    lv_obj_set_style_bg_color(back_btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(back_btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(back_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(back_btn, 8, LV_PART_MAIN);
+    lv_obj_add_event_cb(back_btn, nav_back_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *back_lbl = lv_label_create(back_btn);
+    lv_label_set_text(back_lbl, LV_SYMBOL_LEFT " Back");
+    lv_obj_set_style_text_color(back_lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(back_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_center(back_lbl);
+
+    // Scrollable step list
+    s_build_scroll = lv_obj_create(s_scr_schedule_build);
+    lv_obj_set_pos(s_build_scroll, 0, 48);
+    lv_obj_set_size(s_build_scroll, 480, 220);
+    lv_obj_set_style_bg_color(s_build_scroll, COL_BG, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_build_scroll, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_build_scroll, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_build_scroll, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(s_build_scroll, 4, LV_PART_MAIN);
+    lv_obj_set_flex_flow(s_build_scroll, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(s_build_scroll, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_add_flag(s_build_scroll, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create step rows
+    for (int i = 0; i < s_build_step_count; i++) {
+        // Row container
+        lv_obj_t *row = lv_obj_create(s_build_scroll);
+        lv_obj_set_size(row, 460, 40);
+        lv_obj_set_style_bg_color(row, COL_SURFACE, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(row, 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(row, 6, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(row, 4, LV_PART_MAIN);
+        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+        // Step number label
+        char step_lbl_txt[8];
+        snprintf(step_lbl_txt, sizeof(step_lbl_txt), "S%d", i + 1);
+        lv_obj_t *step_num = lv_label_create(row);
+        lv_label_set_text(step_num, step_lbl_txt);
+        lv_obj_set_style_text_color(step_num, COL_TEXT_DIM, LV_PART_MAIN);
+        lv_obj_set_style_text_font(step_num, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_pos(step_num, 2, 10);
+
+        // State cycle button
+        lv_obj_t *state_btn = lv_button_create(row);
+        lv_obj_set_size(state_btn, 56, 28);
+        lv_obj_set_pos(state_btn, 28, 4);
+        lv_obj_set_style_bg_color(state_btn, lv_color_hex(0x2a3a5e),
+                                  LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_color(state_btn, COL_ACCENT,
+                                  LV_PART_MAIN | LV_STATE_PRESSED);
+        lv_obj_set_style_border_color(state_btn, COL_ACCENT, LV_PART_MAIN);
+        lv_obj_set_style_border_width(state_btn, 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(state_btn, 4, LV_PART_MAIN);
+        lv_obj_add_event_cb(state_btn, build_state_cycle_cb, LV_EVENT_CLICKED,
+                            (void *)(uintptr_t)i);
+
+        s_build_state_lbl[i] = lv_label_create(state_btn);
+        lv_obj_set_style_text_font(s_build_state_lbl[i],
+                                   &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_center(s_build_state_lbl[i]);
+
+        // Duration controls (hidden for last step)
+        bool is_last = (i == s_build_step_count - 1);
+
+        make_small_btn(row, "-", 92, 6,
+                       build_hours_dn_cb, (void *)(uintptr_t)i);
+        s_build_dur_lbl[i] = lv_label_create(row);
+        lv_obj_set_style_text_color(s_build_dur_lbl[i], COL_TEXT, LV_PART_MAIN);
+        lv_obj_set_style_text_font(s_build_dur_lbl[i],
+                                   &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_pos(s_build_dur_lbl[i], 124, 10);
+
+        if (is_last) {
+            // Hide +/- controls for indefinite step
+            lv_obj_add_flag(lv_obj_get_child(row, -2),
+                            LV_OBJ_FLAG_HIDDEN);  // hours-dn btn is second-to-last child
+        }
+
+        make_small_btn(row, "+", 200, 6,
+                       build_hours_up_cb, (void *)(uintptr_t)i);
+        make_small_btn(row, "-", 236, 6,
+                       build_min_dn_cb, (void *)(uintptr_t)i);
+        make_small_btn(row, "+", 270, 6,
+                       build_min_up_cb, (void *)(uintptr_t)i);
+
+        if (is_last) {
+            lv_obj_add_flag(lv_obj_get_child(row, -1), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lv_obj_get_child(row, -2), LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lv_obj_get_child(row, -3), LV_OBJ_FLAG_HIDDEN);
+        }
+
+        // Refresh labels now
+        build_refresh_step(i);
+    }
+
+    // "+ Add Step" button
+    lv_obj_t *add_row = lv_obj_create(s_build_scroll);
+    lv_obj_set_size(add_row, 460, 40);
+    lv_obj_set_style_bg_color(add_row, COL_BG, LV_PART_MAIN);
+    lv_obj_set_style_border_width(add_row, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(add_row, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(add_row, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(add_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *add_btn = lv_button_create(add_row);
+    lv_obj_set_size(add_btn, 140, 32);
+    lv_obj_set_pos(add_btn, 160, 4);
+    lv_obj_set_style_bg_color(add_btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(add_btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(add_btn, COL_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_border_width(add_btn, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(add_btn, 6, LV_PART_MAIN);
+    lv_obj_add_event_cb(add_btn, build_add_step_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *add_lbl = lv_label_create(add_btn);
+    lv_label_set_text(add_lbl, "+ Add Step");
+    lv_obj_set_style_text_color(add_lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(add_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_center(add_lbl);
+
+    if (s_build_step_count >= BUILD_MAX_STEPS)
+        lv_obj_add_flag(add_btn, LV_OBJ_FLAG_HIDDEN);
+}
+
+// ============================================================================
 // Periodic update timer (runs in LVGL task — no lock needed here)
 // ============================================================================
 
@@ -560,6 +1203,64 @@ static void update_timer_cb(lv_timer_t *timer)
     snprintf(uptime, sizeof(uptime), "%02lu:%02lu", (unsigned long)h, (unsigned long)m);
     lv_label_set_text(s_lbl_uptime, uptime);
 
+    // Relay indicator dots
+    lv_obj_set_style_bg_color(s_dot_relay_m,
+        st.relay_main ? COL_SUCCESS : COL_OFF, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_dot_relay_a,
+        st.relay_aux  ? COL_SUCCESS : COL_OFF, LV_PART_MAIN);
+
+    // Schedule status bar
+    if (st.schedule_active) {
+        lv_obj_clear_flag(s_sched_bar, LV_OBJ_FLAG_HIDDEN);
+
+        char sbar_txt[80];
+        if (st.schedule_step_remaining_s > 0) {
+            uint32_t rem_h = st.schedule_step_remaining_s / 3600;
+            uint32_t rem_m = (st.schedule_step_remaining_s % 3600) / 60;
+            snprintf(sbar_txt, sizeof(sbar_txt),
+                     "%s  Step %d/%d  %luh %02lum left",
+                     st.schedule_name,
+                     st.schedule_step + 1, st.schedule_total_steps,
+                     (unsigned long)rem_h, (unsigned long)rem_m);
+        } else {
+            snprintf(sbar_txt, sizeof(sbar_txt),
+                     "%s  Step %d/%d",
+                     st.schedule_name,
+                     st.schedule_step + 1, st.schedule_total_steps);
+        }
+        lv_label_set_text(s_sched_bar_lbl, sbar_txt);
+    } else {
+        lv_obj_add_flag(s_sched_bar, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // History chart: update every tick (500 ms timer), but track data per call
+    if (!st.sensor_error) {
+        // Track min/max
+        if (st.temperature_f < s_hist_min) s_hist_min = st.temperature_f;
+        if (st.temperature_f > s_hist_max) s_hist_max = st.temperature_f;
+
+        // Add to chart every 2 calls (~1 s)
+        s_hist_ticks++;
+        if (s_hist_ticks % 2 == 0 && s_chart) {
+            lv_chart_set_next_value(s_chart, s_chart_series,
+                                    (int32_t)st.temperature_f);
+        }
+
+        if (s_current == GUI_SCREEN_HISTORY) {
+            char tmp[24];
+            if (s_hist_min < 9000.0f) {
+                snprintf(tmp, sizeof(tmp), "Min: %.1f\xC2\xB0""F", s_hist_min);
+                lv_label_set_text(s_lbl_hist_min, tmp);
+            }
+            snprintf(tmp, sizeof(tmp), "Now: %.1f\xC2\xB0""F", st.temperature_f);
+            lv_label_set_text(s_lbl_hist_current, tmp);
+            if (s_hist_max > -9000.0f) {
+                snprintf(tmp, sizeof(tmp), "Max: %.1f\xC2\xB0""F", s_hist_max);
+                lv_label_set_text(s_lbl_hist_max, tmp);
+            }
+        }
+    }
+
     // Update secondary screens if currently visible
     if (s_current == GUI_SCREEN_WIFI) {
         bool conn = wifi_is_connected();
@@ -571,6 +1272,17 @@ static void update_timer_cb(lv_timer_t *timer)
             wifi_get_ip_string(ip, sizeof(ip));
         }
         lv_label_set_text(s_wifi_lbl_ip, ip);
+    }
+
+    if (s_current == GUI_SCREEN_SCHEDULES) {
+        // Show/hide stop button based on schedule state
+        if (s_sched_stop_btn) {
+            if (st.schedule_active) {
+                lv_obj_clear_flag(s_sched_stop_btn, LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_obj_add_flag(s_sched_stop_btn, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
     }
 
     if (s_current == GUI_SCREEN_INFO) {
@@ -616,6 +1328,9 @@ bool gui_init(void)
     create_settings_screen();
     create_wifi_screen();
     create_info_screen();
+    create_history_screen();
+    create_schedules_screen();
+    create_schedule_build_screen();
 
     lvgl_port_unlock();
 
@@ -655,10 +1370,13 @@ void gui_set_screen(gui_screen_t screen)
     if (!s_initialized || screen >= GUI_SCREEN_COUNT) return;
 
     lv_obj_t *targets[GUI_SCREEN_COUNT] = {
-        [GUI_SCREEN_MAIN]     = s_scr_main,
-        [GUI_SCREEN_SETTINGS] = s_scr_settings,
-        [GUI_SCREEN_WIFI]     = s_scr_wifi,
-        [GUI_SCREEN_INFO]     = s_scr_info,
+        [GUI_SCREEN_MAIN]            = s_scr_main,
+        [GUI_SCREEN_SETTINGS]        = s_scr_settings,
+        [GUI_SCREEN_WIFI]            = s_scr_wifi,
+        [GUI_SCREEN_INFO]            = s_scr_info,
+        [GUI_SCREEN_HISTORY]         = s_scr_history,
+        [GUI_SCREEN_SCHEDULES]       = s_scr_schedules,
+        [GUI_SCREEN_SCHEDULE_BUILD]  = s_scr_schedule_build,
     };
 
     if (!lvgl_port_lock(0)) return;

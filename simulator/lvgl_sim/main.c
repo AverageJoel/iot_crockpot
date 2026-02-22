@@ -7,8 +7,8 @@
  *
  * Build:
  *   mkdir build && cd build
- *   cmake .. -G "MinGW Makefiles"   (or -G "Ninja", or VS generator)
- *   cmake --build .
+ *   cmake .. -G Ninja -DCMAKE_C_COMPILER=/c/msys64/ucrt64/bin/gcc.exe
+ *   PATH="/c/msys64/ucrt64/bin:$PATH" ninja crockpot_sim
  *   ./crockpot_sim
  *
  * Keys:
@@ -16,11 +16,16 @@
  *   W         crockpot WARM
  *   L         crockpot LOW
  *   H         crockpot HIGH
+ *   1         start Slow Cook schedule
+ *   2         start Quick Warm schedule
+ *   3         start All Day schedule
  *   Up/Down   temperature +/- 5°F
  *   E         toggle sensor error
  *   D         toggle WiFi connected
  *   T         show toast message
  *   R         show error toast
+ *   X         export CSV data log
+ *   S         print current status to stdout
  *   Q / Esc   quit
  */
 
@@ -30,6 +35,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 
 /* LVGL */
 #include "lvgl.h"
@@ -40,6 +46,11 @@
 
 /* Simulator controls */
 #include "stubs/sim_controls.h"
+
+/* New simulator modules */
+#include "stubs/datalog.h"
+#include "stubs/web_server.h"
+#include "stubs/telegram.h"
 
 /* ── Display constants ───────────────────────────────────────────────────── */
 
@@ -105,6 +116,28 @@ static void mouse_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
                     : LV_INDEV_STATE_RELEASED;
 }
 
+/* ── 1-second tick LVGL timer callback ──────────────────────────────────── */
+
+static void sim_tick_cb(lv_timer_t *timer)
+{
+    (void)timer;
+
+    /* Advance physics + schedule engine */
+    crockpot_tick_s();
+
+    /* Log a data sample */
+    crockpot_status_t st = crockpot_get_status();
+    datalog_tick(&st);
+}
+
+/* ── Telegram poll timer (every 2 s) ─────────────────────────────────────── */
+
+static void telegram_tick_cb(lv_timer_t *timer)
+{
+    (void)timer;
+    telegram_poll();
+}
+
 /* ── Keyboard handler ────────────────────────────────────────────────────── */
 
 static void handle_keydown(SDL_Keycode sym)
@@ -112,6 +145,7 @@ static void handle_keydown(SDL_Keycode sym)
     switch (sym) {
         /* Heat state controls */
         case SDLK_o:
+            crockpot_schedule_stop();
             crockpot_set_state(CROCKPOT_OFF);
             break;
         case SDLK_w:
@@ -122,6 +156,20 @@ static void handle_keydown(SDL_Keycode sym)
             break;
         case SDLK_h:
             crockpot_set_state(CROCKPOT_HIGH);
+            break;
+
+        /* Schedule shortcuts */
+        case SDLK_1:
+            crockpot_schedule_start(&CROCKPOT_SCHED_SLOW_COOK);
+            gui_show_message("Schedule: Slow Cook", 3000);
+            break;
+        case SDLK_2:
+            crockpot_schedule_start(&CROCKPOT_SCHED_QUICK_WARM);
+            gui_show_message("Schedule: Quick Warm", 3000);
+            break;
+        case SDLK_3:
+            crockpot_schedule_start(&CROCKPOT_SCHED_ALL_DAY);
+            gui_show_message("Schedule: All Day", 3000);
             break;
 
         /* Temperature adjustment */
@@ -145,8 +193,39 @@ static void handle_keydown(SDL_Keycode sym)
             gui_show_message("Test message from keyboard", 3000);
             break;
         case SDLK_r:
-            gui_show_error("SAFETY SHUTOFF: Temperature 305.2 F exceeded limit.");
+            gui_show_error("SAFETY SHUTOFF: Temperature 305.2°F exceeded limit.");
             break;
+
+        /* Data logging export */
+        case SDLK_x: {
+            char fname[64];
+            time_t now = time(NULL);
+            struct tm *tm_info = localtime(&now);
+            strftime(fname, sizeof(fname),
+                     "crockpot_log_%Y%m%d_%H%M%S.csv", tm_info);
+            if (datalog_export_csv(fname)) {
+                char msg[80];
+                snprintf(msg, sizeof(msg), "Log exported: %s", fname);
+                gui_show_message(msg, 4000);
+            } else {
+                gui_show_message("No data to export yet", 3000);
+            }
+            break;
+        }
+
+        /* Debug: print status to stdout */
+        case SDLK_s: {
+            crockpot_status_t st = crockpot_get_status();
+            printf("[status] state=%s  temp=%.1f°F  relay=M%d/A%d  "
+                   "sched=%s/%s  uptime=%lus\n",
+                   crockpot_state_to_string(st.state),
+                   st.temperature_f,
+                   st.relay_main, st.relay_aux,
+                   st.schedule_active ? "active" : "none",
+                   st.schedule_active ? st.schedule_name : "-",
+                   (unsigned long)st.uptime_seconds);
+            break;
+        }
 
         default:
             break;
@@ -168,8 +247,9 @@ int main(int argc, char *argv[])
 
     static const char *WINDOW_TITLE =
         "IoT Crockpot Simulator  "
-        "[O=off  W=warm  L=low  H=high  \xe2\x86\x91\xe2\x86\x93=temp  "
-        "E=sensor-err  D=wifi  T=toast  R=error  Q=quit]";
+        "[O=off  W=warm  L=low  H=high  1/2/3=schedule  "
+        "\xe2\x86\x91\xe2\x86\x93=temp  E=sensor-err  D=wifi  "
+        "X=export  S=status  T=toast  R=error  Q=quit]";
 
     s_window = SDL_CreateWindow(
         WINDOW_TITLE,
@@ -212,6 +292,11 @@ int main(int argc, char *argv[])
     /* Hand the window to the display_driver stub for title updates */
     sim_display_driver_set_window(s_window);
 
+    /* ── Simulator modules ───────────────────────────────────────────────── */
+    datalog_init();
+    web_server_init();
+    telegram_init();
+
     /* ── LVGL ────────────────────────────────────────────────────────────── */
     lv_init();
 
@@ -237,10 +322,18 @@ int main(int argc, char *argv[])
     }
     gui_start();
 
+    /* 1-second timer: physics + schedule + datalog */
+    lv_timer_create(sim_tick_cb, 1000, NULL);
+
+    /* 2-second timer: Telegram poll */
+    lv_timer_create(telegram_tick_cb, 2000, NULL);
+
     printf("IoT Crockpot Simulator running at %dx%d (LVGL %dx%d × %d)\n",
            WIN_W, WIN_H, LCD_W, LCD_H, SCALE);
-    printf("Keys: O=off  W=warm  L=low  H=high  Up/Down=temp  "
-           "E=sensor-err  D=wifi  T=toast  R=error  Q=quit\n");
+    printf("Keys: O=off  W=warm  L=low  H=high  1/2/3=schedule  "
+           "Up/Down=temp  E=sensor-err  D=wifi  X=export  S=status  "
+           "T=toast  R=error  Q=quit\n");
+    printf("Web API: http://localhost:8080/\n");
 
     /* ── Event loop ──────────────────────────────────────────────────────── */
     bool running = true;
@@ -263,6 +356,9 @@ int main(int argc, char *argv[])
             }
         }
 
+        /* Non-blocking web server poll */
+        web_server_poll();
+
         /* Drive LVGL timers (renders dirty regions, fires update_timer_cb) */
         uint32_t time_till_next = lv_timer_handler();
 
@@ -272,6 +368,9 @@ int main(int argc, char *argv[])
     }
 
     /* ── Cleanup ─────────────────────────────────────────────────────────── */
+    web_server_shutdown();
+    telegram_shutdown();
+
     SDL_DestroyTexture(s_texture);
     SDL_DestroyRenderer(s_renderer);
     SDL_DestroyWindow(s_window);
