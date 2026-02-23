@@ -614,6 +614,14 @@
     [
       "00000000-0000-0000-0000-000000000001",
       "Root"
+    ],
+    [
+      "6c31928f-909b-40f3-8b59-e8581ae56fb1",
+      "MCU"
+    ],
+    [
+      "f695c9c8-db26-4d34-a20f-9eec298d324a",
+      "Power, Relays, and Temp Sensor"
     ]
   ],
   "text_variables": {}

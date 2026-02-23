@@ -1,82 +1,101 @@
 # IoT Crockpot Power Board
 
-Custom PCB for the IoT Crockpot controller. This board handles AC-DC conversion, relay control, and temperature sensing, communicating with the CYD display board via UART over a single 4-pin JST cable.
+Custom PCB for the IoT Crockpot controller. Single-board design — the ESP32-S3
+handles WiFi, display, thermocouple, relay, and USB directly with no secondary MCU.
 
-## Project Files
-
-- `iot_crockpot.kicad_pro` - KiCad project file
-- `iot_crockpot.kicad_sch` - Schematic
-- `iot_crockpot.kicad_pcb` - PCB layout
-- `cyd_enclosure.scad` - 3D printable enclosure for CYD
-
-## Directory Structure
-
-```
-hardware/
-├── iot_crockpot.kicad_pro    # Project file
-├── iot_crockpot.kicad_sch    # Schematic
-├── iot_crockpot.kicad_pcb    # PCB layout
-├── cyd_enclosure.scad        # OpenSCAD enclosure
-├── symbols/                   # Custom schematic symbols
-├── footprints/                # Custom component footprints
-├── 3dmodels/                  # 3D models for visualization
-├── production/                # Generated output files
-│   ├── gerbers/              # Gerber files for fabrication
-│   ├── bom/                  # Bill of materials
-│   └── assembly/             # Assembly drawings
-└── README.md                  # This file
-```
-
-## Board Architecture
+## Architecture
 
 ```
 AC Mains ──► Fuse ──► MOV ──► HLK-5M05 ──► P-FET ──► 5V Rail
-                                            (AO3401)     │
-                                          Gate: 100K→GND │
-                                          G-S: 100nF cap │
+                                           (AO3401)      │
+                                         Gate: 100K→GND  │
+                                         G-S: 100nF cap  │
                                                          │
-                                ┌────────────────────────┘
-                                │
-                                ├──► CYD P1 (5V power + UART)
-                                │
-                                ├──► AP2112K-3.3 LDO ──► 3.3V Rail
-                                │                          │
-                                │                          ├──► STM32 VDD
-                                │                          └──► MAX31855 VCC
-                                │
-                                └──► Relay coil supply
+                              ┌──────────────────────────┘
+                              │
+                              ├──► AP2112K-3.3 LDO ──► 3.3V Rail
+                              │                           │
+                              │              ┌────────────┘
+                              │              │
+                              │         ESP32-S3-WROOM-1-N4R2
+                              │              │
+                              │              ├──► ST7796 Display (SPI)
+                              │              ├──► FT6336U Touch (I2C)
+                              │              ├──► MAX31855 TC (SPI)
+                              │              ├──► Relay driver (GPIO → 2N7002)
+                              │              └──► USB-C (GPIO19/20, native)
+                              │
+                              └──► Relay coil supply (5V)
 
-CYD P1 (UART) ◄──1K──► STM32G031 ◄──► MAX31855 ◄──► Thermocouple
-                            │
-                            └──► Relay control
+AC Mains ──► Relay NO contact ──► Crockpot heating element
 ```
+
+## Project Files
+
+- `iot_crockpot.kicad_pro` — KiCad project file
+- `iot_crockpot.kicad_sch` — Top-level schematic (hierarchical sheets)
+- `MCU.kicad_sch` — ESP32-S3 MCU sheet
+- `power_relays_tempsens.kicad_sch` — Power supply, relay, thermocouple sheet
+- `iot_crockpot.kicad_pcb` — PCB layout
+
+## Schematic Status
+
+| Section | Status |
+|---------|--------|
+| AC input (fuse, MOV, HLK-5M05) | Done |
+| 5V backfeed protection (P-FET AO3401) | Pending |
+| AP2112K-3.3 LDO | Pending |
+| ESP32-S3-WROOM-1-N4R2 | In progress |
+| USB-C connector (GCT USB4085 / HRO TYPE-C-31-M-12) | Pending |
+| 14-pin display header (ST7796 + FT6336U) | Pending |
+| MAX31855 thermocouple | Pending |
+| Relay driver (2N7002 MOSFET) | Done |
+| Relay (G5LE-1) | Done |
+| Connectors (AC screw terminals, thermocouple) | Done |
+
+See [docs/schematic_rework_plan.md](../docs/schematic_rework_plan.md) for the
+step-by-step schematic rework guide.
 
 ## Components
 
 ### MCU
 | Part | Value | Package | LCSC # |
 |------|-------|---------|--------|
-| STM32G031F6P6 | Cortex-M0+ | TSSOP-20 | (search) |
+| ESP32-S3-WROOM-1-N4R2 | 4MB flash, 2MB PSRAM | Module | C2913203 |
 
-- 125°C temperature rating (important near heating element)
-- Built-in UART bootloader for firmware updates via CYD (PA9/PA10)
-- UART to CYD, SPI master to MAX31855
+### Display Interface
+| Part | Value | Notes |
+|------|-------|-------|
+| J_DISPLAY | 14-pin 2.54mm header | ST7796 SPI display + FT6336U touch |
 
-### 3.3V LDO Regulator
+Display modules (all electrically equivalent, 14-pin 2.54mm interface):
+- Hosyond (Amazon B0CMD7Y55M) ~$15
+- Waveshare 3.5" Capacitive Touch LCD ~$19
+- Elecrow 3.5" IPS SPI LCD ~$17
+
+**Note:** Use ST7796 controller only. Avoid ILI9488 — no 16-bit SPI color and
+broken MISO tristate cause SPI bus conflicts.
+
+### 3.3V LDO
 | Part | Value | Package | LCSC # |
 |------|-------|---------|--------|
 | AP2112K-3.3TRG1 | 3.3V 600mA | SOT-23-5 | (search) |
-
-- Input: 5V rail from HLK-5M05
-- Output: 3.3V for STM32 + MAX31855 (~55mA max draw)
-- Decoupling: 1uF ceramic input, 1uF ceramic output
 
 ### Power Supply
 | Part | Value | Notes |
 |------|-------|-------|
 | HLK-5M05 | 5V 5W | AC-DC isolated PSU module |
 
-### Input Protection
+### USB
+| Part | Value | LCSC # | Notes |
+|------|-------|--------|-------|
+| USB-C receptacle | GCT USB4085 or HRO TYPE-C-31-M-12 | C2765186 / C165948 | USB 2.0 only |
+| R_D- | 22Ω 0402 | — | GPIO19 to D- |
+| R_D+ | 22Ω 0402 | — | GPIO20 to D+ |
+| R_CC1 | 5.1K 0402 | — | CC1 to GND |
+| R_CC2 | 5.1K 0402 | — | CC2 to GND |
+
+### AC Input Protection
 | Part | Value | LCSC # | Notes |
 |------|-------|--------|-------|
 | Fuse holder | 5x20mm clips | C3130 | Xucheng pair |
@@ -87,74 +106,60 @@ CYD P1 (UART) ◄──1K──► STM32G031 ◄──► MAX31855 ◄──► 
 | Part | Value | Notes |
 |------|-------|-------|
 | MAX31855KASA | K-type interface | SPI, cold junction compensated |
-| Thermocouple | K-type | High temp probe |
+| Thermocouple | K-type probe | High temp |
 
 ### Relay
 | Part | Value | Notes |
 |------|-------|-------|
 | Omron G5LE-1 | SPDT 10A | 5V coil |
+| 2N7002 | N-ch MOSFET | Relay driver (x2) |
 | 1N4148WQ-13-F | Flyback diode | SOD-123 |
+| 10K resistor | Gate pull-down | Keeps relay off when GPIO floating |
 
-**Relay Pinout:**
-| Pin | Function |
-|-----|----------|
-| 1 | COM (Common) |
-| 2 | Coil (-) |
-| 3 | NC (Normally Closed) |
-| 4 | NO (Normally Open) - **Use this for fail-safe** |
-| 5 | Coil (+) |
-
-### Protection Circuits
-| Part | Value | Package | Notes |
-|------|-------|---------|-------|
-| P-FET | AO3401 or SI2301 | SOT-23 | High-side pass transistor, blocks USB 5V backfeed into HLK-5M05 |
-| Gate resistor | 100K | 0402/0603 | Pulls P-FET gate to GND (turns FET on when HLK powered) |
-| Gate-source cap | 100nF | 0402/0603 | Suppresses Miller coupling during USB contact bounce |
-| UART series resistors | 1K (x2) | 0402/0603 | On TX (PA9→P1) and RX (PA10←P1), limits bus contention current |
+### Protection
+| Part | Value | Notes |
+|------|-------|-------|
+| P-FET (AO3401) | SOT-23 | Blocks USB-C VBUS backfeed into HLK-5M05 |
+| 100K resistor | Gate to GND | P-FET gate bias |
+| 100nF cap | Gate-source | Miller coupling suppression |
 
 ### Connectors
 | Part | Value | LCSC # | Notes |
 |------|-------|--------|-------|
-| JST GH 4-pin | SM04B-GHS-TB | C189895 | CYD cable connector (x1) |
-| Screw terminal | Phoenix 1935161 | (search) | Mains input, relay output |
+| Screw terminal (x2) | Phoenix 1935161 | (search) | AC mains in, relay out |
 
-## KiCad Libraries
+## GPIO Assignments
 
-### Symbols (built-in)
-- `Device:Fuse`
-- `Connector:Screw_Terminal_01x02`
-- `Connector:Conn_01x04_Pin`
+| Signal | GPIO | Notes |
+|--------|------|-------|
+| SPI SCK | 12 | Shared: display, MAX31855 |
+| SPI MOSI | 11 | |
+| SPI MISO | 13 | |
+| LCD CS | 10 | |
+| LCD DC | 9 | |
+| LCD RST | 8 | |
+| LCD BL | 47 | PWM backlight |
+| SD CS | 14 | SD card on display module |
+| Touch SDA | 5 | I2C |
+| Touch SCL | 4 | I2C |
+| Touch RST | 6 | |
+| Touch INT | 7 | |
+| MAX31855 CS | 16 | |
+| Relay | 17 | Via 2N7002 driver |
+| USB D- | 19 | Fixed, native USB |
+| USB D+ | 20 | Fixed, native USB |
 
-### Footprints (built-in)
-| Component | Footprint |
-|-----------|-----------|
-| Fuse clips | `Fuse:Fuseholder_Clip-5x20mm_Littelfuse_111_Inline_P20.00x5.00mm_D1.05mm_Horizontal` |
-| Screw terminal | `TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal` |
-| JST GH 4-pin | `Connector_JST:JST_GH_SM04B-GHS-TB_1x04-1MP_P1.25mm_Horizontal` |
-| Relay | `Relay_THT:Relay_SPDT_Omron-G5LE-1` |
-| Flyback diode | `Diode_SMD:D_SOD-123` |
+## ESP32-S3 Strapping Pins
 
-## CYD Interface
+| Pin | Default | Action |
+|-----|---------|--------|
+| GPIO0 | Pull-up to 3V3 | Ensures SPI Boot (normal) on power-up |
+| GPIO46 | Float (internal pull-down) | Leave unconnected |
+| EN | 10K to 3V3 + 1µF to GND | RC filter for clean power-on reset |
 
-The power board connects to the CYD via a single 1.25mm JST cable (P1):
-
-### P1 Cable (Power + UART)
-| CYD Pin | Function | Power Board | Notes |
-|---------|----------|-------------|-------|
-| VIN | 5V | From HLK-5M05 via P-FET | P-FET blocks USB backfeed |
-| TX | UART TX | STM32 PA10 (USART1_RX) | Via 1K series resistor |
-| RX | UART RX | STM32 PA9 (USART1_TX) | Via 1K series resistor |
-| GND | Ground | GND | |
-
-Note: PA9/PA10 are also the STM32 system bootloader UART pins, enabling firmware updates over the same cable. The 1K series resistors protect against bus contention when the CYD is programmed via USB (CH340 and STM32 both driving the same UART0 lines).
-
-## CYD Dimensions
-
-For enclosure design:
-| Measurement | Size |
-|-------------|------|
-| PCB size | 101.5 x 54.9 mm |
-| Display active area | 73.44 x 48.96 mm |
+BOOT jumper: 2-pin 2.54mm header (GPIO0 to GND). Install to enter download mode on
+next reset. Remove for normal boot. Not needed for routine flashing — native USB
+handles auto-reset via esptool.py.
 
 ## Safety Notes
 
@@ -162,26 +167,18 @@ For enclosure design:
 - **Creepage/Clearance**: Follow IPC-2221 for mains voltage traces
 - **Fuse**: Must be rated for AC mains (250VAC)
 - **Relay Wiring**: Use NO contact for fail-safe (de-energized = OFF)
-- **Grounding**: Connect earth ground to enclosure if metal
 
 ## Fabrication Notes
 
-When ordering PCBs:
 1. Generate Gerbers to `production/gerbers/`
 2. 2-layer board, 1.6mm thickness
 3. HASL or ENIG finish
 4. Minimum 2oz copper for mains traces
-5. Consider conformal coating for humidity resistance
 
 ## References
 
-- [Hardware Decisions](../docs/hardware_decisions.md) - Component selection rationale
+- [Hardware Decisions](../docs/hardware_decisions.md) — Component selection rationale
+- [Schematic Rework Plan](../docs/schematic_rework_plan.md) — Step-by-step rework guide
+- [ESP32-S3 Hardware Design Guidelines](https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32s3/schematic-checklist.html)
+- [ST7796 Display Module](https://www.lcdwiki.com/3.5inch_IPS_SPI_Module_ST7796)
 - [Omron G5LE-1 Datasheet](http://www.omron.com/ecb/products/pdf/en-g5le.pdf)
-- [STM32G031 Datasheet](https://www.st.com/resource/en/datasheet/stm32g031c6.pdf)
-- [CYD Pinout](https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display/blob/main/PINS.md)
-
-## Version History
-
-- **v0.1** - Initial schematic with power supply section
-- **v0.2** - Added STM32G031 MCU, two-board architecture
-- **v0.3** - Switched from I2C (2 cables) to UART (1 cable), added AP2112K-3.3 LDO

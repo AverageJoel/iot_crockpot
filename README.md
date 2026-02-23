@@ -174,7 +174,14 @@ See [docs/telegram_setup.md](docs/telegram_setup.md) for bot creation and config
 - [x] Boot log (chip info, IDF version, all GPIO pins)
 
 ### Hardware (PCB)
-- [ ] Schematic (in progress — MCU, LDO, MAX31855, relay, connectors pending)
+- [x] Architecture finalized (single-board ESP32-S3, ST7796 SPI display)
+- [x] AC supply section (fuse, MOV, HLK-5M05)
+- [x] Relay section (G5LE-1, 2N7002 driver, flyback diode)
+- [ ] ESP32-S3 MCU section (in progress)
+- [ ] USB-C connector
+- [ ] AP2112K-3.3 LDO
+- [ ] Display header (14-pin)
+- [ ] MAX31855 thermocouple
 - [ ] PCB layout
 - [ ] Gerber generation
 - [ ] Prototype build and validation
@@ -185,6 +192,7 @@ See [docs/telegram_setup.md](docs/telegram_setup.md) for bot creation and config
 |----------|-------------|
 | [firmware_architecture.md](docs/firmware_architecture.md) | Firmware module breakdown, task structure, LVGL stack |
 | [hardware_decisions.md](docs/hardware_decisions.md) | Component selection rationale, ESP32-S3 vs alternatives |
+| [schematic_rework_plan.md](docs/schematic_rework_plan.md) | Step-by-step KiCad schematic rework guide |
 | [telegram_setup.md](docs/telegram_setup.md) | Bot creation and configuration guide |
 | [wiring.md](docs/wiring.md) | Bench wiring guide |
 | [assembly.md](docs/assembly.md) | Assembly instructions |
