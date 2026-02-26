@@ -2,6 +2,69 @@
 
 An open-source, internet-enabled crockpot controller with a local touchscreen UI and remote Telegram control. Built on a custom single-board design around the ESP32-S3-WROOM-1-N4R2 and a 3.5" IPS capacitive touch display.
 
+---
+
+> **Branch: `feature/xiao-esp32c3-display-test`**
+>
+> The custom PCB is not yet fabricated. This branch retargets the firmware
+> to a **Seeed Studio XIAO ESP32-C3** dev board wired directly to the
+> 3.5" ST7796 display module. Temperature and relay are mocked in firmware
+> so the full touchscreen UI can be tested without the final hardware.
+>
+> See [docs/wiring_xiao_display.md](docs/wiring_xiao_display.md) for the
+> full wiring diagram and [docs/building.md](docs/building.md) for build
+> instructions (Windows / ESP-IDF).
+
+---
+
+## Test hardware (this branch)
+
+| Component | Part | Datasheet / Info |
+|-----------|------|-----------------|
+| MCU dev board | Seeed Studio XIAO ESP32-C3 | [Seeed Wiki](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/) |
+| Display module | LCD Wiki 3.5" IPS SPI — ST7796 + FT6336U | [LCD Wiki](https://www.lcdwiki.com/3.5inch_IPS_SPI_Module_ST7796) |
+
+## Wiring — XIAO ESP32-C3 → 3.5" ST7796 display
+
+> The display module is **5V powered** with an onboard level converter — use the
+> XIAO's `5V` pin for VCC. Signal lines (SPI + I2C) run at 3.3V and connect
+> directly to the XIAO GPIOs with no additional components.
+
+| Display pin | Signal | XIAO pin | GPIO | Notes |
+|:-----------:|--------|:--------:|:----:|-------|
+| 1 | VCC | **5V** | — | Must be 5V, not 3V3 |
+| 2 | GND | GND | — | |
+| 3 | LCD_CS | D3 | 5 | |
+| 4 | LCD_RST | D1 | 3 | |
+| 5 | LCD_RS (DC) | D2 | 4 | |
+| 6 | SDI (MOSI) | D10 | 10 | |
+| 7 | SCK | D8 | 8 | |
+| 8 | LED (BL) | D0 | 2 | |
+| 9 | SDO (MISO) | D9 | 9 | |
+| 10 | CTP_SCL | D5 | 7 | I2C clock |
+| 11 | CTP_RST | **3V3** | — | Tie high |
+| 12 | CTP_SDA | D4 | 6 | I2C data |
+| 13 | CTP_INT | — | — | Leave NC (polled mode) |
+| 14 | SD_CS | — | — | Leave NC |
+
+D6 / D7 (GPIO21/20) are used by the CH340 USB-UART bridge for serial monitor — do not connect these to the display.
+
+Full ASCII diagram and pre-power checklist: [docs/wiring_xiao_display.md](docs/wiring_xiao_display.md)
+
+## Build (this branch)
+
+```powershell
+# In PowerShell (not Git Bash — see docs/building.md)
+. C:\Users\Joel\esp\esp-idf\export.ps1
+
+cd firmware
+idf.py set-target esp32c3
+idf.py build
+idf.py -p COM<N> flash monitor   # replace COM<N> with XIAO's CH340 port
+```
+
+---
+
 ## Features
 
 - **Remote Control via Telegram** — Control and monitor from anywhere; automatic safety alerts sent to Telegram on shutoff events
@@ -194,7 +257,9 @@ See [docs/telegram_setup.md](docs/telegram_setup.md) for bot creation and config
 | [hardware_decisions.md](docs/hardware_decisions.md) | Component selection rationale, ESP32-S3 vs alternatives |
 | [schematic_rework_plan.md](docs/schematic_rework_plan.md) | Step-by-step KiCad schematic rework guide |
 | [telegram_setup.md](docs/telegram_setup.md) | Bot creation and configuration guide |
-| [wiring.md](docs/wiring.md) | Bench wiring guide |
+| [building.md](docs/building.md) | Windows build guide: ESP-IDF + PowerShell, flash commands, troubleshooting |
+| [wiring_xiao_display.md](docs/wiring_xiao_display.md) | XIAO ESP32-C3 → ST7796 display wiring diagram and checklist |
+| [wiring.md](docs/wiring.md) | Bench wiring guide (final hardware) |
 | [assembly.md](docs/assembly.md) | Assembly instructions |
 
 ## License
