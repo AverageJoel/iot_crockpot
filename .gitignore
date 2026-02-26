@@ -3,6 +3,11 @@ firmware/build/
 firmware/sdkconfig
 firmware/sdkconfig.old
 firmware/dependencies.lock
+# Managed components are auto-downloaded by idf_component.yml — too large to commit (lvgl is 182MB)
+firmware/managed_components/
+
+# Simulator build artifacts
+simulator/lvgl_sim/build/
 
 # KiCad backup files
 *.kicad_sch-bak
