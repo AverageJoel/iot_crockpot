@@ -22,6 +22,7 @@
  */
 
 #include "gui.h"
+#include "display.h"
 #include "display_driver.h"
 #include "crockpot.h"
 #include "wifi.h"
@@ -197,6 +198,13 @@ static void wake(void)
         s_dimmed = false;
         display_driver_set_backlight(true);
     }
+}
+
+/** LVGL indev event callback — wakes backlight on any screen touch. */
+static void touch_wake_cb(lv_event_t *e)
+{
+    (void)e;
+    wake();
 }
 
 // ============================================================================
@@ -1355,6 +1363,12 @@ bool gui_start(void)
 
     lv_screen_load(s_scr_main);
     s_current = GUI_SCREEN_MAIN;
+
+    // Wake backlight on any touch, not just registered button presses
+    lv_indev_t *indev = display_get_lvgl_indev();
+    if (indev) {
+        lv_indev_add_event_cb(indev, touch_wake_cb, LV_EVENT_PRESSED, NULL);
+    }
 
     // Status update every 500 ms (runs in LVGL task, repeats forever)
     s_update_timer = lv_timer_create(update_timer_cb, 500, NULL);
