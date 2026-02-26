@@ -102,12 +102,11 @@ lv_indev_t *display_get_lvgl_indev(void);
 #define DISPLAY_WIDTH   CONFIG_CROCKPOT_LCD_WIDTH
 #define DISPLAY_HEIGHT  CONFIG_CROCKPOT_LCD_HEIGHT
 
-// Physical button GPIOs (optional fallback input — from Kconfig)
-// These are unused placeholder values; buttons may be omitted from the PCB.
-// display.c button ISR will be removed when GUI is rewritten with LVGL (Phase 6).
-#define BUTTON_UP_GPIO     1
-#define BUTTON_DOWN_GPIO   14
-#define BUTTON_SELECT_GPIO 15
+// Physical button GPIOs — from Kconfig. Set to -1 to disable.
+// On XIAO ESP32-C3, leave all at -1: GPIO14/15 are flash pins and must not be used.
+#define BUTTON_UP_GPIO     CONFIG_CROCKPOT_BUTTON_UP_GPIO
+#define BUTTON_DOWN_GPIO   CONFIG_CROCKPOT_BUTTON_DOWN_GPIO
+#define BUTTON_SELECT_GPIO CONFIG_CROCKPOT_BUTTON_SELECT_GPIO
 
 // Display update interval
 #define DISPLAY_UPDATE_INTERVAL_MS 250

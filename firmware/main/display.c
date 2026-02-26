@@ -58,6 +58,10 @@ static volatile bool s_button_select_pressed = false;
 // Physical buttons (optional hardware — remove if not populated on PCB)
 // ============================================================================
 
+// ISR only compiled when at least one button GPIO is enabled
+#if !(CONFIG_CROCKPOT_BUTTON_UP_GPIO < 0 && \
+      CONFIG_CROCKPOT_BUTTON_DOWN_GPIO < 0 && \
+      CONFIG_CROCKPOT_BUTTON_SELECT_GPIO < 0)
 static void IRAM_ATTR button_isr_handler(void *arg)
 {
     uint32_t gpio_num = (uint32_t)arg;
@@ -65,9 +69,16 @@ static void IRAM_ATTR button_isr_handler(void *arg)
     else if (gpio_num == BUTTON_DOWN_GPIO)   s_button_down_pressed   = true;
     else if (gpio_num == BUTTON_SELECT_GPIO) s_button_select_pressed = true;
 }
+#endif
 
 static void init_buttons(void)
 {
+#if CONFIG_CROCKPOT_BUTTON_UP_GPIO < 0 && \
+    CONFIG_CROCKPOT_BUTTON_DOWN_GPIO < 0 && \
+    CONFIG_CROCKPOT_BUTTON_SELECT_GPIO < 0
+    ESP_LOGI(TAG, "Physical buttons disabled (all GPIOs set to -1)");
+    return;
+#else
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << BUTTON_UP_GPIO) |
                         (1ULL << BUTTON_DOWN_GPIO) |
@@ -89,6 +100,7 @@ static void init_buttons(void)
     gpio_isr_handler_add(BUTTON_SELECT_GPIO, button_isr_handler, (void *)BUTTON_SELECT_GPIO);
 
     ESP_LOGI(TAG, "Physical buttons initialized");
+#endif
 }
 
 static void process_buttons(void)

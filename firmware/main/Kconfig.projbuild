@@ -102,6 +102,27 @@ menu "IoT Crockpot"
                 Disable for active-low relay modules.
     endmenu
 
+    menu "Physical Buttons (optional)"
+        config CROCKPOT_BUTTON_UP_GPIO
+            int "Button UP GPIO (-1 = not fitted)"
+            default -1
+            help
+                Physical button for UP/increase. Set to -1 to disable.
+                WARNING: do not use GPIO11-17 on ESP32-C3 — those are flash pins.
+
+        config CROCKPOT_BUTTON_DOWN_GPIO
+            int "Button DOWN GPIO (-1 = not fitted)"
+            default -1
+            help
+                Physical button for DOWN/decrease. Set to -1 to disable.
+
+        config CROCKPOT_BUTTON_SELECT_GPIO
+            int "Button SELECT GPIO (-1 = not fitted)"
+            default -1
+            help
+                Physical button for SELECT/toggle. Set to -1 to disable.
+    endmenu
+
     menu "Test / Development"
         config CROCKPOT_MOCK_TEMPERATURE
             bool "Mock temperature sensor (no MAX31855 hardware)"
