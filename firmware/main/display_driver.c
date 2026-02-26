@@ -100,10 +100,11 @@ bool display_driver_init(void)
     // Disable this if your display shows inverted colors.
     esp_lcd_panel_invert_color(s_panel_handle, true);
 
-    // Landscape orientation: 480 wide x 320 tall.
-    // Adjust swap_xy / mirror_x / mirror_y if image is rotated or mirrored.
-    esp_lcd_panel_swap_xy(s_panel_handle, true);
-    esp_lcd_panel_mirror(s_panel_handle, true, false);
+    // Orientation (swap_xy / mirror) is NOT set here.
+    // lvgl_port_add_disp() calls esp_lcd_panel_swap_xy() and esp_lcd_panel_mirror()
+    // after panel init using the values from lvgl_port_display_cfg_t.rotation.
+    // Any calls made here would be silently overwritten — set orientation in
+    // display.c's lvgl_port_display_cfg_t.rotation instead.
 
     esp_lcd_panel_set_gap(s_panel_handle, 0, 0);
 

@@ -166,9 +166,21 @@ bool display_init(void)
     }
 
     // --- 4. Register display with LVGL ---
-    // Rotation is already applied at the hardware panel level (Phase 3):
-    //   swap_xy=true, mirror_x=true → 480×320 landscape.
-    // Pass zeros here so LVGL does not rotate a second time.
+    // lvgl_port_add_disp() calls lvgl_port_disp_rotation_update() internally,
+    // which issues esp_lcd_panel_swap_xy() and esp_lcd_panel_mirror() using the
+    // values from disp_cfg.rotation.  Any swap_xy/mirror calls made before this
+    // point (e.g. in display_driver_init) are OVERWRITTEN — so this rotation
+    // struct is the authoritative orientation control.
+    //
+    // ST7796 is portrait-native (320 cols × 480 rows). swap_xy=true (MADCTL MV)
+    // rotates addressing to landscape (480 cols × 320 rows).
+    // mirror_x / mirror_y tune which corner is (0,0) — adjust if image is
+    // flipped horizontally or vertically.
+    //
+    // Note: full_refresh requires buffer_size == hres*vres (153,600 px = 300 KB).
+    // That exceeds ESP32-C3 SRAM budget, so we use partial-refresh mode instead.
+    // The partial-buffer approach works correctly once landscape mode is active
+    // (all 480×320 pixels map cleanly without GRAM-wrap noise).
     const lvgl_port_display_cfg_t disp_cfg = {
         .io_handle    = display_driver_get_io(),
         .panel_handle = display_driver_get_panel(),
@@ -178,13 +190,19 @@ bool display_init(void)
         .vres = LCD_V_RES,
         .monochrome = false,
         .rotation = {
-            .swap_xy  = false,
-            .mirror_x = false,
-            .mirror_y = false,
+            .swap_xy  = true,   // landscape: swap rows/cols (MADCTL MV bit)
+            .mirror_x = false,  // tune if image is LR-flipped
+            .mirror_y = false,  // tune if image is UD-flipped
         },
         .flags = {
-            .buff_dma   = true,   // internal DMA-capable SRAM — required for SPI
+            .buff_dma    = true,  // internal DMA-capable SRAM — required for SPI
             .buff_spiram = false, // set true for larger buffer from PSRAM if needed
+            // ESP32 is little-endian: LVGL stores RGB565 with the low byte at the
+            // lower address. SPI DMA sends low byte first, so the ST7796 receives
+            // bytes in the wrong order (R and B channels swap → pink/purple tint).
+            // swap_bytes tells esp_lvgl_port to byte-swap each RGB565 word in
+            // software before handing it to esp_lcd, restoring correct wire order.
+            .swap_bytes  = true,
         },
     };
 
