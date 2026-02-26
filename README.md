@@ -65,6 +65,17 @@ idf.py -p COM<N> flash monitor   # replace COM<N> with XIAO's CH340 port
 
 ---
 
+## Main project reference — custom PCB (`main` branch)
+
+> **Everything below this line describes the final production hardware: a custom
+> ESP32-S3 PCB with AC mains power, relay, and thermocouple.**
+>
+> This is **not** what you need for the XIAO ESP32-C3 test setup on this branch.
+> If you are here to wire up and test the display, you are done — see the
+> wiring table and build commands above.
+
+---
+
 ## Features
 
 - **Remote Control via Telegram** — Control and monitor from anywhere; automatic safety alerts sent to Telegram on shutoff events

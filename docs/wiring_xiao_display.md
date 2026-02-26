@@ -1,5 +1,12 @@
 # Wiring: XIAO ESP32-C3 → LCD Wiki 3.5" ST7796 Display
 
+> **This document applies to branch `feature/xiao-esp32c3-display-test` only.**
+>
+> This is a temporary test rig using a Seeed Studio XIAO ESP32-C3 dev board to
+> validate the display and UI before the custom ESP32-S3 PCB is fabricated.
+> The final hardware (custom PCB, AC mains, relay, thermocouple) is described
+> in the `main` branch README and `docs/hardware_decisions.md`.
+
 ## Sources
 - Display datasheet: [LCD Wiki 3.5" IPS SPI Module ST7796](https://www.lcdwiki.com/3.5inch_IPS_SPI_Module_ST7796)
 - MCU: [Seeed Studio XIAO ESP32-C3](https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/)
