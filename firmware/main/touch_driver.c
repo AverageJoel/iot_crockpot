@@ -93,11 +93,21 @@ bool touch_driver_init(void)
     }
 
     // --- FT6336U touch handle ---
-    // swap_xy and mirror must match display_driver.c orientation settings:
-    //   display uses swap_xy=true, mirror_x=true → touch matches here
+    // The FT6336U reports raw coordinates in portrait orientation (x=0..319,
+    // y=0..479).  x_max/y_max are used ONLY for mirror arithmetic (mirror_x
+    // computes x = x_max - x), so they must match the pre-swap portrait space,
+    // not the landscape display dimensions.  Using landscape values (480/320)
+    // here shifts the mirror centre off-screen and produces a dead zone.
+    //
+    // Transform chain (applied in order by esp_lcd_touch base):
+    //   1. mirror_x  → x = x_max - x  (x_max = 320)
+    //   2. mirror_y  → y = y_max - y  (y_max = 480)
+    //   3. swap_xy   → swap x and y  → landscape output (x=0..479, y=0..319)
+    //
+    // Verified on this module: mirror_x=1, mirror_y=0, swap_xy=1.
     esp_lcd_touch_config_t tp_cfg = {
-        .x_max        = LCD_H_RES,
-        .y_max        = LCD_V_RES,
+        .x_max        = LCD_V_RES,   // portrait x range: 320
+        .y_max        = LCD_H_RES,   // portrait y range: 480
         .rst_gpio_num = CONFIG_CROCKPOT_TOUCH_RST,
         .int_gpio_num = CONFIG_CROCKPOT_TOUCH_INT,
         .levels = {
@@ -105,8 +115,8 @@ bool touch_driver_init(void)
             .interrupt = 0,  // active-low interrupt
         },
         .flags = {
-            .swap_xy  = 1,  // match display swap_xy=true
-            .mirror_x = 1,  // match display mirror_x=true
+            .swap_xy  = 1,  // portrait→landscape
+            .mirror_x = 1,  // IC X axis is horizontally inverted on this module
             .mirror_y = 0,
         },
     };
