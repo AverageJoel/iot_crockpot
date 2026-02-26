@@ -83,21 +83,28 @@ sdkconfig for the new chip. This deletes the old build directory automatically.
 
 ## XIAO ESP32-C3 wiring (display test branch)
 
+See `docs/wiring_xiao_display.md` for the full diagram and checklist.
+Quick reference:
+
 | Display pin | Signal | XIAO pin | GPIO |
-|-------------|--------|----------|------|
-| LCD_SCL | SPI SCK | D8 | 8 |
-| LCD_SDA | SPI MOSI | D10 | 10 |
-| LCD_MISO | SPI MISO | D9 | 9 |
-| LCD_CS | LCD CS | D3 | 5 |
-| LCD_DC | LCD DC | D2 | 4 |
-| LCD_RST | LCD RST | D1 | 3 |
-| LCD_BL | Backlight | D0 | 2 |
-| TP_SDA | Touch SDA | D4 | 6 |
-| TP_SCL | Touch SCL | D5 | 7 |
-| TP_RST | — | 3.3V | — |
-| TP_INT | — | not connected | — |
-| VCC | Power | 3V3 | — |
-| GND | Ground | GND | — |
+|:-----------:|--------|----------|------|
+| 1 | VCC | **5V** | — |
+| 2 | GND | GND | — |
+| 3 | LCD_CS | D3 | 5 |
+| 4 | LCD_RST | D1 | 3 |
+| 5 | LCD_RS (DC) | D2 | 4 |
+| 6 | SDI (MOSI) | D10 | 10 |
+| 7 | SCK | D8 | 8 |
+| 8 | LED (BL) | D0 | 2 |
+| 9 | SDO (MISO) | D9 | 9 |
+| 10 | CTP_SCL | D5 | 7 |
+| 11 | CTP_RST | **3V3** | — |
+| 12 | CTP_SDA | D4 | 6 |
+| 13 | CTP_INT | — | NC |
+| 14 | SD_CS | — | NC |
+
+> **VCC must be 5V**, not 3.3V. The module has an onboard level converter
+> so 3.3V signals from the XIAO work fine, but the module itself needs 5V input.
 
 Serial monitor output comes through the CH340 USB bridge on D6/D7 (GPIO20/21).
 Do **not** use those pins for anything else.
