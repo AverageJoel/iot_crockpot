@@ -15,6 +15,52 @@
 
 static const char* TAG = "temperature";
 
+// ============================================================================
+// Conversion helpers (always compiled — no hardware dependency)
+// ============================================================================
+
+float temperature_c_to_f(float celsius)
+{
+    return (celsius * 9.0f / 5.0f) + 32.0f;
+}
+
+float temperature_f_to_c(float fahrenheit)
+{
+    return (fahrenheit - 32.0f) * 5.0f / 9.0f;
+}
+
+// ============================================================================
+// Mock implementation (no MAX31855 hardware)
+// ============================================================================
+
+#if CONFIG_CROCKPOT_MOCK_TEMPERATURE
+
+bool temperature_init(void)
+{
+    ESP_LOGI(TAG, "Mock temperature mode — no MAX31855");
+    return true;
+}
+
+temperature_reading_t temperature_read(void)
+{
+    return (temperature_reading_t){
+        .temperature_c = temperature_f_to_c(150.0f),
+        .temperature_f = 150.0f,
+        .valid = true,
+    };
+}
+
+bool temperature_sensor_ok(void)
+{
+    return true;
+}
+
+// ============================================================================
+// Real MAX31855 implementation
+// ============================================================================
+
+#else
+
 // SPI device handle
 static spi_device_handle_t s_spi_handle = NULL;
 
@@ -147,16 +193,6 @@ temperature_reading_t temperature_read(void)
     return reading;
 }
 
-float temperature_c_to_f(float celsius)
-{
-    return (celsius * 9.0f / 5.0f) + 32.0f;
-}
-
-float temperature_f_to_c(float fahrenheit)
-{
-    return (fahrenheit - 32.0f) * 5.0f / 9.0f;
-}
-
 bool temperature_sensor_ok(void)
 {
     if (!s_initialized) {
@@ -167,3 +203,5 @@ bool temperature_sensor_ok(void)
     temperature_reading_t reading = temperature_read();
     return reading.valid;
 }
+
+#endif // CONFIG_CROCKPOT_MOCK_TEMPERATURE

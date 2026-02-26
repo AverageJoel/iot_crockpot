@@ -31,10 +31,10 @@
 
 static const char *TAG = "display";
 
-// Draw buffer height in lines.
-// 50 lines × 480 px × 2 bytes = 48 KB — fits in internal DMA-capable SRAM.
-// Increase (or use buff_spiram=true) for smoother rendering if needed.
-#define LVGL_DRAW_BUF_LINES  50
+// Draw buffer height in lines — set via Kconfig (menuconfig → IoT Crockpot → Test/Development).
+// ESP32-S3 default: 50 lines (48KB, DMA SRAM).
+// ESP32-C3 default: 20 lines (19KB, fits in 400KB SRAM without PSRAM).
+#define LVGL_DRAW_BUF_LINES  CONFIG_CROCKPOT_LCD_DRAW_BUFFER_LINES
 
 // ============================================================================
 // State

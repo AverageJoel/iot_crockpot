@@ -1,22 +1,22 @@
 # IoT Crockpot default configuration
-# Target: ESP32-S3-WROOM-1-N4R2 (4MB flash, 2MB OPI PSRAM)
+# Target: Seeed Studio XIAO ESP32-C3 (RISC-V, 4MB flash, no PSRAM)
 #
-# To reconfigure after changing target:
-#   idf.py set-target esp32s3
+# To build:
+#   idf.py set-target esp32c3
 #   idf.py menuconfig   (set WiFi/Telegram credentials under "IoT Crockpot")
+#   idf.py build
+#   idf.py -p COM<N> flash monitor
 
-CONFIG_IDF_TARGET="esp32s3"
+CONFIG_IDF_TARGET="esp32c3"
 
 # Flash (4MB)
 CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 
-# PSRAM (2MB OPI PSRAM on N4R2 variant)
-CONFIG_SPIRAM=y
-CONFIG_SPIRAM_MODE_OCT=y
-CONFIG_SPIRAM_SPEED_80M=y
+# No PSRAM on XIAO ESP32-C3
 
-# USB Serial/JTAG console (native USB on GPIO19/20, no bridge chip needed)
-CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+# UART console via CH340C USB-UART bridge (GPIO20=TXD, GPIO21=RXD)
+# Do NOT use GPIO20/21 for display or other peripherals.
+CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 
 # Partition table
 CONFIG_PARTITION_TABLE_CUSTOM=y
@@ -50,3 +50,10 @@ CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_16=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
 CONFIG_LV_FONT_MONTSERRAT_28=y
+
+# Mock hardware — no MAX31855 or relay on XIAO test rig
+CONFIG_CROCKPOT_MOCK_TEMPERATURE=y
+CONFIG_CROCKPOT_MOCK_RELAY=y
+
+# Smaller LVGL draw buffer — 20 lines × 480px × 2B = ~19KB (safe for C3 SRAM)
+CONFIG_CROCKPOT_LCD_DRAW_BUFFER_LINES=20

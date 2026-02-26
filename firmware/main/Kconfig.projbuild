@@ -3,42 +3,46 @@ menu "IoT Crockpot"
     menu "SPI Bus"
         config CROCKPOT_SPI_SCK
             int "SPI SCK GPIO"
-            default 12
+            default 8
             help
                 SPI clock pin. Shared between ST7796 display, SD card, and MAX31855.
+                Custom PCB (ESP32-S3): GPIO12. XIAO ESP32-C3: GPIO8 (D8).
 
         config CROCKPOT_SPI_MOSI
             int "SPI MOSI GPIO"
-            default 11
+            default 10
             help
                 SPI MOSI pin. Shared between ST7796 display and SD card.
                 MAX31855 is read-only and does not use MOSI.
+                Custom PCB (ESP32-S3): GPIO11. XIAO ESP32-C3: GPIO10 (D10).
 
         config CROCKPOT_SPI_MISO
             int "SPI MISO GPIO"
-            default 13
+            default 9
             help
                 SPI MISO pin. Shared between ST7796 display, SD card, and MAX31855.
+                Custom PCB (ESP32-S3): GPIO13. XIAO ESP32-C3: GPIO9 (D9).
     endmenu
 
     menu "Display (ST7796)"
         config CROCKPOT_LCD_CS
             int "LCD chip select GPIO"
-            default 10
+            default 5
 
         config CROCKPOT_LCD_DC
             int "LCD data/command select GPIO"
-            default 9
+            default 4
 
         config CROCKPOT_LCD_RST
             int "LCD reset GPIO (-1 = tied to EN via RC)"
-            default 8
+            default 3
 
         config CROCKPOT_LCD_BL
             int "LCD backlight GPIO (-1 = always on)"
-            default 47
+            default 2
             help
                 PWM backlight control. Set to -1 if backlight is tied directly to 3.3V.
+                XIAO ESP32-C3: GPIO2 (D0) — active-HIGH so backlight is on at boot.
 
         config CROCKPOT_LCD_WIDTH
             int "LCD width in pixels (after rotation)"
@@ -52,36 +56,43 @@ menu "IoT Crockpot"
     menu "Touch (FT6336U)"
         config CROCKPOT_TOUCH_SDA
             int "Touch I2C SDA GPIO"
-            default 5
+            default 6
 
         config CROCKPOT_TOUCH_SCL
             int "Touch I2C SCL GPIO"
-            default 4
+            default 7
 
         config CROCKPOT_TOUCH_RST
-            int "Touch reset GPIO (-1 = tied high via 10K)"
-            default 6
+            int "Touch reset GPIO (-1 = tied high)"
+            default -1
+            help
+                Touch reset pin. Set to -1 if TP_RST is tied to 3.3V on the module.
+                XIAO ESP32-C3: tie TP_RST to 3.3V, set -1 here.
 
         config CROCKPOT_TOUCH_INT
             int "Touch interrupt GPIO (-1 = polled)"
-            default 7
+            default -1
+            help
+                Touch interrupt pin. Set to -1 to use polled mode (no IRQ).
+                XIAO ESP32-C3: leave TP_INT unconnected and set -1 here.
     endmenu
 
     menu "MAX31855 Thermocouple"
         config CROCKPOT_TC_CS
-            int "MAX31855 chip select GPIO"
-            default 16
+            int "MAX31855 chip select GPIO (-1 = not fitted)"
+            default -1
             help
                 SPI chip select for the MAX31855 thermocouple amplifier.
-                SCK and MISO are shared with the display SPI bus.
+                Set to -1 when not fitted; enable CROCKPOT_MOCK_TEMPERATURE instead.
     endmenu
 
     menu "Relay"
         config CROCKPOT_RELAY_GPIO
-            int "Relay/SSR GPIO"
-            default 17
+            int "Relay/SSR GPIO (-1 = not fitted)"
+            default -1
             help
                 GPIO driving the relay or solid-state relay for the heating element.
+                Set to -1 when not fitted; enable CROCKPOT_MOCK_RELAY instead.
 
         config CROCKPOT_RELAY_ACTIVE_HIGH
             bool "Relay is active-high"
@@ -89,6 +100,30 @@ menu "IoT Crockpot"
             help
                 Enable if relay turns ON when GPIO is HIGH.
                 Disable for active-low relay modules.
+    endmenu
+
+    menu "Test / Development"
+        config CROCKPOT_MOCK_TEMPERATURE
+            bool "Mock temperature sensor (no MAX31855 hardware)"
+            default n
+            help
+                Returns a simulated 150°F temperature. Skips MAX31855 SPI init.
+                Use when testing display/UI without thermocouple hardware.
+
+        config CROCKPOT_MOCK_RELAY
+            bool "Mock relay (no relay hardware)"
+            default n
+            help
+                Logs relay state changes but does not drive any GPIO.
+                Use when testing display/UI without relay hardware.
+
+        config CROCKPOT_LCD_DRAW_BUFFER_LINES
+            int "LVGL draw buffer height (lines)"
+            default 20
+            help
+                Number of horizontal lines in the LVGL DMA draw buffer.
+                50 lines (48KB) works on ESP32-S3 with PSRAM.
+                20 lines (19KB) is safe for ESP32-C3 with 400KB SRAM.
     endmenu
 
     menu "WiFi"

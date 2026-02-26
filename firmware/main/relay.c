@@ -10,14 +10,79 @@
 
 static const char* TAG = "relay";
 
+// Current relay states (tracked in both real and mock modes)
+static bool s_relay_states[RELAY_CHANNEL_COUNT] = { false };
+
+// ============================================================================
+// Mock implementation (no relay hardware)
+// ============================================================================
+
+#if CONFIG_CROCKPOT_MOCK_RELAY
+
+bool relay_init(void)
+{
+    ESP_LOGI(TAG, "Mock relay mode — no relay GPIO");
+    return true;
+}
+
+bool relay_set(relay_channel_t channel, bool on)
+{
+    if (channel >= RELAY_CHANNEL_COUNT) {
+        ESP_LOGE(TAG, "Invalid relay channel: %d", channel);
+        return false;
+    }
+    s_relay_states[channel] = on;
+    ESP_LOGI(TAG, "Mock relay: channel %d → %s", channel, on ? "ON" : "OFF");
+    return true;
+}
+
+bool relay_get(relay_channel_t channel)
+{
+    if (channel >= RELAY_CHANNEL_COUNT) {
+        return false;
+    }
+    return s_relay_states[channel];
+}
+
+void relay_all_off(void)
+{
+    for (int i = 0; i < RELAY_CHANNEL_COUNT; i++) {
+        s_relay_states[i] = false;
+    }
+    ESP_LOGI(TAG, "Mock relay: all OFF");
+}
+
+bool relay_apply_state(crockpot_state_t state)
+{
+    ESP_LOGI(TAG, "Applying crockpot state: %s", crockpot_state_to_string(state));
+
+    switch (state) {
+        case CROCKPOT_OFF:
+            return relay_set(RELAY_CHANNEL_MAIN, false);
+
+        case CROCKPOT_WARM:
+        case CROCKPOT_LOW:
+        case CROCKPOT_HIGH:
+            return relay_set(RELAY_CHANNEL_MAIN, true);
+
+        default:
+            ESP_LOGE(TAG, "Unknown state: %d", state);
+            relay_all_off();
+            return false;
+    }
+}
+
+// ============================================================================
+// Real relay implementation
+// ============================================================================
+
+#else
+
 // Relay GPIO mapping
 static const gpio_num_t s_relay_gpio[RELAY_CHANNEL_COUNT] = {
     [RELAY_CHANNEL_MAIN] = RELAY_MAIN_GPIO,
     [RELAY_CHANNEL_AUX]  = RELAY_AUX_GPIO
 };
-
-// Current relay states
-static bool s_relay_states[RELAY_CHANNEL_COUNT] = { false };
 
 // Initialized flag
 static bool s_initialized = false;
@@ -120,3 +185,5 @@ bool relay_apply_state(crockpot_state_t state)
             return false;
     }
 }
+
+#endif // CONFIG_CROCKPOT_MOCK_RELAY
