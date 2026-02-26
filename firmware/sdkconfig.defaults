@@ -9,8 +9,8 @@
 
 CONFIG_IDF_TARGET="esp32c3"
 
-# Flash (4MB)
-CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+# Flash (4MB) — use the choice bool, not the string, to override the C3 default of 2MB
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 
 # No PSRAM on XIAO ESP32-C3
 

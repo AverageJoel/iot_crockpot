@@ -41,7 +41,9 @@ bool touch_driver_init(void)
              CONFIG_CROCKPOT_TOUCH_RST, CONFIG_CROCKPOT_TOUCH_INT);
 
     // --- CTP_RST: pulse low to reset, then release ---
-    if (CONFIG_CROCKPOT_TOUCH_RST >= 0) {
+    // Guard with #if so the compiler doesn't evaluate (1ULL << -1) when RST=-1.
+#if CONFIG_CROCKPOT_TOUCH_RST >= 0
+    {
         gpio_config_t rst_cfg = {
             .pin_bit_mask = (1ULL << CONFIG_CROCKPOT_TOUCH_RST),
             .mode         = GPIO_MODE_OUTPUT,
@@ -55,6 +57,7 @@ bool touch_driver_init(void)
         gpio_set_level(CONFIG_CROCKPOT_TOUCH_RST, 1);
         vTaskDelay(pdMS_TO_TICKS(10));
     }
+#endif
 
     // --- I2C bus (legacy driver API) ---
     i2c_config_t i2c_conf = {
