@@ -30,7 +30,7 @@ static const char *TAG = "display_driver";
 #define BL_LEDC_TIMER       LEDC_TIMER_0
 #define BL_LEDC_CHANNEL     LEDC_CHANNEL_0
 #define BL_LEDC_RESOLUTION  LEDC_TIMER_8_BIT   // 0–255 duty range
-#define BL_LEDC_FREQ_HZ     1000
+#define BL_LEDC_FREQ_HZ     25000  // 25 kHz — above FT6336U noise-rejection threshold
 
 static esp_lcd_panel_handle_t    s_panel_handle = NULL;
 static esp_lcd_panel_io_handle_t s_io_handle    = NULL;
