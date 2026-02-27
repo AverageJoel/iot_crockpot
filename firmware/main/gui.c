@@ -24,6 +24,7 @@
 #include "gui.h"
 #include "display.h"
 #include "display_driver.h"
+#include "touch_driver.h"
 #include "crockpot.h"
 #include "wifi.h"
 
@@ -175,15 +176,10 @@ static lv_timer_t *s_update_timer = NULL;
 // Backlight dimming / screensaver
 static uint32_t    s_last_interaction_ms     = 0;
 static bool        s_dimmed                  = false;
-static uint32_t    s_dimmed_at_ms            = 0;   // timestamp of screensaver entry
 static lv_obj_t   *s_scr_screensaver         = NULL;
 static lv_obj_t   *s_lbl_ss_temp             = NULL;
 static lv_obj_t   *s_lbl_ss_state            = NULL;
 static lv_obj_t   *s_scr_before_screensaver  = NULL;
-
-// Ignore touch wakes for this many ms after entering screensaver.
-// Prevents phantom FT6336U reports triggered by the screen transition.
-#define SCREENSAVER_LOCKOUT_MS  1500
 
 // ============================================================================
 // Helpers
@@ -212,16 +208,17 @@ static void wake(void)
     }
 }
 
-/** LVGL indev event callback — wakes backlight on any screen touch. */
+/** LVGL indev event callback — wakes backlight on any screen touch.
+ *
+ * While the screensaver is active this path is intentionally blocked.
+ * Waking from screensaver is handled by the 500ms update timer polling
+ * the touch driver directly, which naturally filters phantom FT6336U
+ * samples (they clear within a few LVGL ticks, well under 500ms).
+ */
 static void touch_wake_cb(lv_event_t *e)
 {
     (void)e;
-    // Discard events during lockout window to suppress phantom FT6336U reports
-    // that can occur immediately after the screensaver transition.
-    if (s_dimmed) {
-        uint32_t now_ms = (uint32_t)(esp_timer_get_time() / 1000);
-        if ((now_ms - s_dimmed_at_ms) < SCREENSAVER_LOCKOUT_MS) return;
-    }
+    if (s_dimmed) return;
     wake();
 }
 
@@ -1352,7 +1349,6 @@ static void update_timer_cb(lv_timer_t *timer)
         bool should_dim  = idle_ms > (uint32_t)s_config.screen_timeout_s * 1000;
         if (should_dim && !s_dimmed) {
             s_dimmed = true;
-            s_dimmed_at_ms = now_ms;
             s_scr_before_screensaver = lv_scr_act();
             lv_screen_load(s_scr_screensaver);
             display_set_brightness(15);
@@ -1372,6 +1368,20 @@ static void update_timer_cb(lv_timer_t *timer)
             lv_label_set_text(s_lbl_ss_state, crockpot_state_to_string(st.state));
             lv_obj_set_style_text_color(s_lbl_ss_state,
                 st.sensor_error ? COL_ERROR : get_state_color(st.state), LV_PART_MAIN);
+
+            // Wake on sustained touch only. The indev event path is blocked
+            // while dimmed because the FT6336U generates phantom single-sample
+            // touches in polled mode. A real tap lasts >>500ms so it will still
+            // be present when this timer fires; phantom samples clear in <10ms.
+            esp_lcd_touch_handle_t tp = touch_driver_get_handle();
+            if (tp) {
+                uint16_t tx, ty, ts;
+                uint8_t tc = 0;
+                esp_lcd_touch_get_coordinates(tp, &tx, &ty, &ts, &tc, 1);
+                if (tc > 0) {
+                    wake();
+                }
+            }
         }
     }
 }
