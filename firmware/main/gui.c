@@ -24,7 +24,6 @@
 #include "gui.h"
 #include "display.h"
 #include "display_driver.h"
-#include "touch_driver.h"
 #include "crockpot.h"
 #include "wifi.h"
 
@@ -208,17 +207,10 @@ static void wake(void)
     }
 }
 
-/** LVGL indev event callback — wakes backlight on any screen touch.
- *
- * While the screensaver is active this path is intentionally blocked.
- * Waking from screensaver is handled by the 500ms update timer polling
- * the touch driver directly, which naturally filters phantom FT6336U
- * samples (they clear within a few LVGL ticks, well under 500ms).
- */
+/** LVGL indev event callback — wakes backlight on any screen touch. */
 static void touch_wake_cb(lv_event_t *e)
 {
     (void)e;
-    if (s_dimmed) return;
     wake();
 }
 
@@ -1369,19 +1361,6 @@ static void update_timer_cb(lv_timer_t *timer)
             lv_obj_set_style_text_color(s_lbl_ss_state,
                 st.sensor_error ? COL_ERROR : get_state_color(st.state), LV_PART_MAIN);
 
-            // Wake on sustained touch only. The indev event path is blocked
-            // while dimmed because the FT6336U generates phantom single-sample
-            // touches in polled mode. A real tap lasts >>500ms so it will still
-            // be present when this timer fires; phantom samples clear in <10ms.
-            esp_lcd_touch_handle_t tp = touch_driver_get_handle();
-            if (tp) {
-                uint16_t tx, ty, ts;
-                uint8_t tc = 0;
-                esp_lcd_touch_get_coordinates(tp, &tx, &ty, &ts, &tc, 1);
-                if (tc > 0) {
-                    wake();
-                }
-            }
         }
     }
 }
