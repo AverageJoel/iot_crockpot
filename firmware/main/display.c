@@ -220,6 +220,15 @@ bool display_init(void)
             .handle = tp,
         };
         s_indev = lvgl_port_add_touch(&touch_cfg);
+
+        // Shorten the indev poll period from the ~30ms default to 16ms (~60Hz).
+        // The default means a quick tap (<30ms) can slip between polls and be
+        // missed entirely.  16ms halves the worst-case miss window.
+        if (s_indev != NULL && lvgl_port_lock(0)) {
+            lv_timer_t *t = lv_indev_get_read_timer(s_indev);
+            if (t) lv_timer_set_period(t, 16);
+            lvgl_port_unlock();
+        }
     }
 
     // --- 6. Optional physical buttons ---

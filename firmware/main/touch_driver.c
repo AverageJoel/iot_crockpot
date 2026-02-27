@@ -127,6 +127,22 @@ bool touch_driver_init(void)
         return false;
     }
 
+    // FT6336U register 0x86 (CTRL): 0 = keep-active (always scanning),
+    //                                1 = auto-monitor (default, enters low-power
+    //                                    scan mode between touches — causes the
+    //                                    first tap after idle to be missed).
+    {
+        uint8_t ctrl[] = {0x86, 0x00};
+        esp_err_t rc = i2c_master_write_to_device(TOUCH_I2C_PORT, 0x38,
+                                                   ctrl, sizeof(ctrl),
+                                                   pdMS_TO_TICKS(100));
+        if (rc != ESP_OK) {
+            ESP_LOGW(TAG, "FT6336U keep-active write failed: %s", esp_err_to_name(rc));
+        } else {
+            ESP_LOGI(TAG, "FT6336U set to keep-active mode");
+        }
+    }
+
     s_initialized = true;
     ESP_LOGI(TAG, "FT6336U touch initialized (%dx%d)", LCD_H_RES, LCD_V_RES);
     return true;
