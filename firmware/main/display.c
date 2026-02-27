@@ -282,8 +282,7 @@ void display_clear_message(void)
 
 void display_set_brightness(uint8_t brightness)
 {
-    // Simple on/off for now; full PWM brightness can be added later via LEDC.
-    display_driver_set_backlight(brightness > 0);
+    display_driver_set_brightness(brightness);
 }
 
 display_type_t display_get_type(void)

@@ -172,9 +172,13 @@ static lv_timer_t *s_toast_timer = NULL;
 // Status update timer
 static lv_timer_t *s_update_timer = NULL;
 
-// Backlight dimming
-static uint32_t    s_last_interaction_ms = 0;
-static bool        s_dimmed              = false;
+// Backlight dimming / screensaver
+static uint32_t    s_last_interaction_ms     = 0;
+static bool        s_dimmed                  = false;
+static lv_obj_t   *s_scr_screensaver         = NULL;
+static lv_obj_t   *s_lbl_ss_temp             = NULL;
+static lv_obj_t   *s_lbl_ss_state            = NULL;
+static lv_obj_t   *s_scr_before_screensaver  = NULL;
 
 // ============================================================================
 // Helpers
@@ -196,7 +200,10 @@ static void wake(void)
     s_last_interaction_ms = (uint32_t)(esp_timer_get_time() / 1000);
     if (s_dimmed) {
         s_dimmed = false;
-        display_driver_set_backlight(true);
+        display_set_brightness(100);
+        if (s_scr_before_screensaver) {
+            lv_screen_load(s_scr_before_screensaver);
+        }
     }
 }
 
@@ -510,6 +517,30 @@ static void add_screen_title(lv_obj_t *scr, const char *title)
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(lbl, COL_ACCENT, LV_PART_MAIN);
     lv_obj_align(lbl, LV_ALIGN_TOP_MID, 0, 14);
+}
+
+// ============================================================================
+// Screensaver screen  (dim status: temp + state, no controls)
+// ============================================================================
+
+static void create_screensaver_screen(void)
+{
+    s_scr_screensaver = lv_obj_create(NULL);
+    style_screen(s_scr_screensaver);   // dark COL_BG background
+
+    // Large temperature reading, vertically centered
+    s_lbl_ss_temp = lv_label_create(s_scr_screensaver);
+    lv_label_set_text(s_lbl_ss_temp, "---.-\xC2\xB0""F");
+    lv_obj_set_style_text_font(s_lbl_ss_temp, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_lbl_ss_temp, COL_TEXT, LV_PART_MAIN);
+    lv_obj_align(s_lbl_ss_temp, LV_ALIGN_CENTER, 0, -18);
+
+    // Heat state label below temperature
+    s_lbl_ss_state = lv_label_create(s_scr_screensaver);
+    lv_label_set_text(s_lbl_ss_state, "OFF");
+    lv_obj_set_style_text_font(s_lbl_ss_state, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_lbl_ss_state, COL_OFF, LV_PART_MAIN);
+    lv_obj_align(s_lbl_ss_state, LV_ALIGN_CENTER, 0, 18);
 }
 
 // ============================================================================
@@ -1303,14 +1334,32 @@ static void update_timer_cb(lv_timer_t *timer)
         lv_label_set_text(s_info_lbl_uptime, up_str);
     }
 
-    // Backlight dimming
+    // Screensaver: dim to 15% and show status screen after idle timeout
     if (s_config.screen_timeout_s > 0) {
-        uint32_t now_ms   = (uint32_t)(esp_timer_get_time() / 1000);
-        uint32_t idle_ms  = now_ms - s_last_interaction_ms;
-        bool     should   = idle_ms > (uint32_t)s_config.screen_timeout_s * 1000;
-        if (should && !s_dimmed) {
+        uint32_t now_ms  = (uint32_t)(esp_timer_get_time() / 1000);
+        uint32_t idle_ms = now_ms - s_last_interaction_ms;
+        bool should_dim  = idle_ms > (uint32_t)s_config.screen_timeout_s * 1000;
+        if (should_dim && !s_dimmed) {
             s_dimmed = true;
-            display_driver_set_backlight(false);
+            s_scr_before_screensaver = lv_scr_act();
+            lv_screen_load(s_scr_screensaver);
+            display_set_brightness(15);
+        }
+        if (s_dimmed) {
+            // Keep screensaver labels current
+            char ss_temp[24];
+            if (st.sensor_error) {
+                snprintf(ss_temp, sizeof(ss_temp), "SENSOR ERR");
+            } else if (s_config.show_temperature_c) {
+                float c = (st.temperature_f - 32.0f) * 5.0f / 9.0f;
+                snprintf(ss_temp, sizeof(ss_temp), "%.1f\xC2\xB0""C", c);
+            } else {
+                snprintf(ss_temp, sizeof(ss_temp), "%.1f\xC2\xB0""F", st.temperature_f);
+            }
+            lv_label_set_text(s_lbl_ss_temp, ss_temp);
+            lv_label_set_text(s_lbl_ss_state, crockpot_state_to_string(st.state));
+            lv_obj_set_style_text_color(s_lbl_ss_state,
+                st.sensor_error ? COL_ERROR : get_state_color(st.state), LV_PART_MAIN);
         }
     }
 }
@@ -1332,6 +1381,7 @@ bool gui_init(void)
         return false;
     }
 
+    create_screensaver_screen();
     create_main_screen();
     create_settings_screen();
     create_wifi_screen();

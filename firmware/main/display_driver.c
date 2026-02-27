@@ -15,7 +15,7 @@
 #include "display_driver.h"
 #include "spi_bus.h"
 
-#include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_st7796.h"
@@ -24,6 +24,13 @@
 #include <string.h>
 
 static const char *TAG = "display_driver";
+
+// LEDC channel used for PWM backlight control
+#define BL_LEDC_SPEED_MODE  LEDC_LOW_SPEED_MODE
+#define BL_LEDC_TIMER       LEDC_TIMER_0
+#define BL_LEDC_CHANNEL     LEDC_CHANNEL_0
+#define BL_LEDC_RESOLUTION  LEDC_TIMER_8_BIT   // 0–255 duty range
+#define BL_LEDC_FREQ_HZ     1000
 
 static esp_lcd_panel_handle_t    s_panel_handle = NULL;
 static esp_lcd_panel_io_handle_t s_io_handle    = NULL;
@@ -39,17 +46,27 @@ bool display_driver_init(void)
              CONFIG_CROCKPOT_LCD_CS, CONFIG_CROCKPOT_LCD_DC,
              CONFIG_CROCKPOT_LCD_RST, CONFIG_CROCKPOT_LCD_BL);
 
-    // --- Backlight GPIO ---
+    // --- Backlight PWM (LEDC) ---
     if (CONFIG_CROCKPOT_LCD_BL >= 0) {
-        gpio_config_t bl_cfg = {
-            .pin_bit_mask = (1ULL << CONFIG_CROCKPOT_LCD_BL),
-            .mode         = GPIO_MODE_OUTPUT,
-            .pull_up_en   = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type    = GPIO_INTR_DISABLE,
+        ledc_timer_config_t bl_timer = {
+            .speed_mode      = BL_LEDC_SPEED_MODE,
+            .timer_num       = BL_LEDC_TIMER,
+            .duty_resolution = BL_LEDC_RESOLUTION,
+            .freq_hz         = BL_LEDC_FREQ_HZ,
+            .clk_cfg         = LEDC_AUTO_CLK,
         };
-        gpio_config(&bl_cfg);
-        gpio_set_level(CONFIG_CROCKPOT_LCD_BL, 0);  // off during init
+        ledc_timer_config(&bl_timer);
+
+        ledc_channel_config_t bl_channel = {
+            .speed_mode = BL_LEDC_SPEED_MODE,
+            .channel    = BL_LEDC_CHANNEL,
+            .timer_sel  = BL_LEDC_TIMER,
+            .intr_type  = LEDC_INTR_DISABLE,
+            .gpio_num   = CONFIG_CROCKPOT_LCD_BL,
+            .duty       = 0,  // off during init
+            .hpoint     = 0,
+        };
+        ledc_channel_config(&bl_channel);
     }
 
     // --- Shared SPI bus ---
@@ -129,11 +146,18 @@ esp_lcd_panel_io_handle_t display_driver_get_io(void)
     return s_io_handle;
 }
 
+void display_driver_set_brightness(uint8_t pct)
+{
+    if (CONFIG_CROCKPOT_LCD_BL < 0) return;
+    if (pct > 100) pct = 100;
+    uint32_t duty = ((uint32_t)pct * 255) / 100;
+    ledc_set_duty(BL_LEDC_SPEED_MODE, BL_LEDC_CHANNEL, duty);
+    ledc_update_duty(BL_LEDC_SPEED_MODE, BL_LEDC_CHANNEL);
+}
+
 void display_driver_set_backlight(bool on)
 {
-    if (CONFIG_CROCKPOT_LCD_BL >= 0) {
-        gpio_set_level(CONFIG_CROCKPOT_LCD_BL, on ? 1 : 0);
-    }
+    display_driver_set_brightness(on ? 100 : 0);
 }
 
 void display_driver_fill(uint16_t color_rgb565)

@@ -51,7 +51,14 @@ esp_lcd_panel_handle_t display_driver_get_panel(void);
 esp_lcd_panel_io_handle_t display_driver_get_io(void);
 
 /**
- * @brief Control the display backlight
+ * @brief Set backlight brightness via PWM
+ *
+ * @param pct Brightness 0–100 (0 = off, 100 = full)
+ */
+void display_driver_set_brightness(uint8_t pct);
+
+/**
+ * @brief Control the display backlight (on/off convenience wrapper)
  *
  * @param on true to turn backlight on, false to turn off
  */

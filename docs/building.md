@@ -23,6 +23,16 @@ shortcut from the Start Menu.
 
 ---
 
+## One-time PowerShell setup (first time only)
+
+Windows disables script execution by default. Run this once to allow scripts for your user account:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+---
+
 ## First-time setup per terminal session
 
 Open **PowerShell** and run the export script to add ESP-IDF tools to your PATH:
