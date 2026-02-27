@@ -4,17 +4,23 @@
  *
  * Layout (480×320 landscape):
  *
- *   ┌─────────────────────────────────────────────────────┐
- *   │           ╭───────────────────╮                     │
- *   │          ╱     state name      ╲                    │ arc (140×140)
- *   │         │      142.5°F          │                   │
- *   │          ╲                     ╱                    │
- *   │           ╰───────────────────╯                     │
- *   │  ┌──────┐  ┌──────┐  ┌──────┐  ┌──────┐           │
- *   │  │ OFF  │  │ WARM │  │ LOW  │  │ HIGH │           │ buttons
- *   │  └──────┘  └──────┘  └──────┘  └──────┘           │
- *   │ ≋ WiFi        00:42       ⚙  ≡                     │ status bar
- *   └─────────────────────────────────────────────────────┘
+ *   y=0   ┌─────────────────────────────────────────────┐
+ *         │ ≋ WiFi       00:42                  ⚙  ≡    │ h=28  top strip
+ *   y=28  ├─────────────────────────────────────────────┤
+ *         │              142.5°F                         │ h=112 temp panel
+ *         │              ● LOW                           │
+ *   y=140 ├─────────────────────────────────────────────┤
+ *         │  (8px gap)                                   │
+ *   y=148 │ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐│
+ *         │ │  OFF   │ │  WARM  │ │✓ LOW   │ │  HIGH  ││ h=72  heat buttons
+ *         │ └────────┘ └────────┘ └────────┘ └────────┘│
+ *   y=220 ├─────────────────────────────────────────────┤
+ *         │  (8px gap)                                   │
+ *   y=228 │ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐│
+ *         │ │SlwCook │ │QkWarm  │ │All Day │ │Custom  ││ h=72  preset row
+ *         │ └────────┘ └────────┘ └────────┘ └────────┘│
+ *   y=300 │  (20px bottom padding)                      │
+ *   y=320 └─────────────────────────────────────────────┘
  *
  * The LVGL task is owned by esp_lvgl_port — no separate FreeRTOS task.
  * Timer callbacks and event callbacks run in the LVGL task; public API
@@ -46,7 +52,6 @@ static const char *TAG = "gui";
 #define COL_TEXT        lv_color_hex(0xffffff)   // white
 #define COL_TEXT_DIM    lv_color_hex(0x888888)   // gray
 #define COL_ACCENT      lv_color_hex(0x4a9eff)   // blue
-#define COL_ARC_TRACK   lv_color_hex(0x3a3a4e)   // arc background track
 #define COL_OFF         lv_color_hex(0x555555)   // gray (OFF state)
 #define COL_WARM        lv_color_hex(0xffaa00)   // amber (WARM)
 #define COL_LOW         lv_color_hex(0xff6600)   // orange (LOW)
@@ -58,26 +63,35 @@ static const char *TAG = "gui";
 // Layout constants (480×320 landscape)
 // ============================================================================
 
-#define ARC_SIZE        140   // Arc indicator diameter in pixels
-#define ARC_WIDTH       14    // Arc line thickness
-#define ARC_Y_OFFSET    5     // Distance from screen top to arc top edge
-
-// Arc center Y = ARC_Y_OFFSET + ARC_SIZE/2 = 75
-#define STATE_LBL_Y     (ARC_Y_OFFSET + ARC_SIZE / 2 - 12)  // state name inside arc
-#define TEMP_Y          152   // Top of temperature label
-#define BTN_Y           220   // Top of heat button row
-#define BTN_H           60    // Heat button height
-#define BTN_GAP         8     // Gap between / around buttons
+#define STRIP_H         28    // top status strip height
+#define TEMP_PANEL_Y    28    // top of temperature panel
+#define TEMP_PANEL_H    112   // temperature panel height
+#define HEAT_BTN_Y      148   // 28 + 112 + 8 gap
+#define HEAT_BTN_H      72    // heat button height
+#define PRESET_ROW_Y    228   // 148 + 72 + 8 gap
+#define PRESET_ROW_H    72    // preset row height
+#define BTN_GAP         8     // gap between / around buttons
 // Button width: (480 - 5 gaps) / 4 = (480 - 40) / 4 = 110
 #define BTN_W           110
-#define STATUSBAR_Y     283   // Top of status bar
-#define STATUSBAR_H     37    // Status bar height
 
 // Heat state button ordering
 static const crockpot_state_t k_heat_states[4] = {
     CROCKPOT_OFF, CROCKPOT_WARM, CROCKPOT_LOW, CROCKPOT_HIGH
 };
 static const char * const k_heat_labels[4] = { "OFF", "WARM", "LOW", "HIGH" };
+
+// Preset schedules (main screen row)
+static const char * const k_preset_names[3] = {
+    "Slow Cook", "Quick Warm", "All Day"
+};
+static const char * const k_preset_labels[4] = {
+    "Slow Cook", "Quick Warm", "All Day", "Custom"
+};
+static const crockpot_schedule_t * const k_preset_scheds[3] = {
+    &CROCKPOT_SCHED_SLOW_COOK,
+    &CROCKPOT_SCHED_QUICK_WARM,
+    &CROCKPOT_SCHED_ALL_DAY,
+};
 
 // ============================================================================
 // Module state
@@ -101,12 +115,17 @@ static lv_obj_t *s_scr_schedules;
 static lv_obj_t *s_scr_schedule_build;
 
 // Main screen — widgets that need periodic updates
-static lv_obj_t *s_arc;            // State indicator arc
 static lv_obj_t *s_lbl_state;      // "OFF" / "WARM" / "LOW" / "HIGH"
 static lv_obj_t *s_lbl_temp;       // "142.5°F"
 static lv_obj_t *s_lbl_wifi;       // WiFi symbol (color changes)
 static lv_obj_t *s_lbl_uptime;     // "01:23"
 static lv_obj_t *s_heat_btns[4];   // OFF, WARM, LOW, HIGH buttons
+
+// Main screen preset row
+static lv_obj_t *s_preset_normal;     // container: 4 preset/custom buttons (default)
+static lv_obj_t *s_preset_active;     // container: stop + progress (schedule running)
+static lv_obj_t *s_preset_btns[3];    // Slow Cook, Quick Warm, All Day
+static lv_obj_t *s_preset_active_lbl; // "Slow Cook • Step 2/3 • 2h 30m left"
 
 // Settings screen
 static lv_obj_t *s_cf_lbl;         // "Units: Fahrenheit (°F)"
@@ -128,14 +147,6 @@ static lv_obj_t           *s_lbl_hist_max;
 static float               s_hist_min      = 9999.0f;
 static float               s_hist_max      = -9999.0f;
 static uint32_t            s_hist_ticks    = 0;   // incremented each timer call
-
-// Main screen relay indicator dots
-static lv_obj_t *s_dot_relay_m;
-static lv_obj_t *s_dot_relay_a;
-
-// Main screen schedule status bar
-static lv_obj_t *s_sched_bar;
-static lv_obj_t *s_sched_bar_lbl;
 
 // Schedule screen
 static lv_obj_t *s_sched_stop_btn;     // "Stop Schedule" — shown only when active
@@ -294,14 +305,6 @@ static void nav_history_cb(lv_event_t *e)
     lv_screen_load_anim(s_scr_history, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
 }
 
-static void nav_schedules_cb(lv_event_t *e)
-{
-    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
-    wake();
-    s_current = GUI_SCREEN_SCHEDULES;
-    lv_screen_load_anim(s_scr_schedules, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
-}
-
 static void nav_schedule_build_cb(lv_event_t *e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
@@ -319,7 +322,40 @@ static void cf_toggle_cb(lv_event_t *e)
         s_config.show_temperature_c ? "Units: Celsius (°C)" : "Units: Fahrenheit (°F)");
 }
 
-// ── Schedule preset button callback ──────────────────────────────────────────
+// ── Main screen preset row callbacks ─────────────────────────────────────────
+
+/** Tap a preset button on main screen → start schedule immediately */
+static void preset_sched_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    const crockpot_schedule_t *sched =
+        (const crockpot_schedule_t *)lv_event_get_user_data(e);
+    crockpot_schedule_start(sched);
+    char msg[48];
+    snprintf(msg, sizeof(msg), "Started: %s", sched->name);
+    gui_show_message(msg, 2000);
+}
+
+/** Tap Stop in active row → stop current schedule */
+static void preset_stop_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    crockpot_schedule_stop();
+    gui_show_message("Schedule stopped", 2000);
+}
+
+/** Tap Custom → open schedule builder directly */
+static void nav_custom_sched_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    s_current = GUI_SCREEN_SCHEDULE_BUILD;
+    lv_screen_load_anim(s_scr_schedule_build, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+
+// ── Schedule preset button callback (used by schedules screen) ────────────────
 
 static void sched_preset_cb(lv_event_t *e)
 {
@@ -470,26 +506,6 @@ static void style_screen(lv_obj_t *scr)
     lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 }
 
-/** Create a small square icon button (used in status bar and nav). */
-static lv_obj_t *make_icon_btn(lv_obj_t *parent, const char *symbol,
-                                lv_align_t align, int32_t x_ofs, int32_t y_ofs)
-{
-    lv_obj_t *btn = lv_button_create(parent);
-    lv_obj_set_size(btn, 34, 34);
-    lv_obj_align(btn, align, x_ofs, y_ofs);
-    lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
-    lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(btn, 6, LV_PART_MAIN);
-
-    lv_obj_t *lbl = lv_label_create(btn);
-    lv_label_set_text(lbl, symbol);
-    lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
-    lv_obj_center(lbl);
-
-    return btn;
-}
-
 /** Add a centered "← Back" button at the bottom of a secondary screen. */
 static void add_back_button(lv_obj_t *scr)
 {
@@ -552,124 +568,95 @@ static void create_main_screen(void)
     s_scr_main = lv_obj_create(NULL);
     style_screen(s_scr_main);
 
-    // ── State indicator arc ──────────────────────────────────────────────────
-    s_arc = lv_arc_create(s_scr_main);
-    lv_obj_set_size(s_arc, ARC_SIZE, ARC_SIZE);
-    lv_obj_align(s_arc, LV_ALIGN_TOP_MID, 0, ARC_Y_OFFSET);
+    // ── Top status strip (y=0, h=28) ─────────────────────────────────────────
+    lv_obj_t *strip = lv_obj_create(s_scr_main);
+    lv_obj_set_pos(strip, 0, 0);
+    lv_obj_set_size(strip, 480, STRIP_H);
+    lv_obj_set_style_bg_color(strip, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(strip, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(strip, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(strip, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(strip, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(strip, LV_OBJ_FLAG_SCROLLABLE);
 
-    // 270° arc with gap at 6 o'clock:
-    //   rotation=135 shifts the start point 135° clockwise from 3 o'clock.
-    //   bg_angles(0, 270) means 270° sweep. Combined: 135° → 45° clockwise.
-    //   Gap: 45° → 135° = 90° centered at 90° (6 o'clock = bottom). ✓
-    lv_arc_set_rotation(s_arc, 135);
-    lv_arc_set_bg_angles(s_arc, 0, 270);
+    // WiFi icon — tap to go to WiFi screen
+    s_lbl_wifi = lv_label_create(strip);
+    lv_label_set_text(s_lbl_wifi, LV_SYMBOL_WIFI);
+    lv_obj_set_style_text_color(s_lbl_wifi, COL_TEXT_DIM, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_align(s_lbl_wifi, LV_ALIGN_LEFT_MID, 10, 0);
+    lv_obj_add_flag(s_lbl_wifi, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_lbl_wifi, nav_wifi_cb, LV_EVENT_CLICKED, NULL);
 
-    // Value = 100% → indicator fills the entire bg arc (changes color only)
-    lv_arc_set_range(s_arc, 0, 100);
-    lv_arc_set_value(s_arc, 100);
+    // Uptime — center
+    s_lbl_uptime = lv_label_create(strip);
+    lv_label_set_text(s_lbl_uptime, "00:00");
+    lv_obj_set_style_text_color(s_lbl_uptime, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_lbl_uptime, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(s_lbl_uptime, LV_ALIGN_CENTER, 0, 0);
 
-    // Style: background track
-    lv_obj_set_style_arc_color(s_arc, COL_ARC_TRACK, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(s_arc, ARC_WIDTH, LV_PART_MAIN);
-
-    // Style: indicator (filled, color reflects heat state)
-    lv_obj_set_style_arc_color(s_arc, COL_OFF, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_width(s_arc, ARC_WIDTH, LV_PART_INDICATOR);
-
-    // Hide the drag knob and make the arc non-interactive
-    lv_obj_set_style_opa(s_arc, LV_OPA_TRANSP, LV_PART_KNOB);
-    lv_obj_clear_flag(s_arc, LV_OBJ_FLAG_CLICKABLE);
-
-    // ── State name label (centered inside the arc) ───────────────────────────
-    s_lbl_state = lv_label_create(s_scr_main);
-    lv_label_set_text(s_lbl_state, "OFF");
-    lv_obj_set_style_text_font(s_lbl_state, &lv_font_montserrat_20, LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_lbl_state, COL_OFF, LV_PART_MAIN);
-    lv_obj_align(s_lbl_state, LV_ALIGN_TOP_MID, 0, STATE_LBL_Y);
-
-    // ── Relay indicator dots (top-right of screen, arc level) ────────────────
-    // "M" = main relay,  "A" = aux relay
-    // Label on left, colored 10×10 dot on right of label
+    // Settings button — 26×26 to fit 28px strip
     {
-        int32_t rx = 450, ry = 12;
-        lv_obj_t *lbl_m = lv_label_create(s_scr_main);
-        lv_label_set_text(lbl_m, "M");
-        lv_obj_set_style_text_color(lbl_m, COL_TEXT_DIM, LV_PART_MAIN);
-        lv_obj_set_style_text_font(lbl_m, &lv_font_montserrat_14, LV_PART_MAIN);
-        lv_obj_set_pos(lbl_m, rx - 24, ry);
-
-        s_dot_relay_m = lv_obj_create(s_scr_main);
-        lv_obj_set_size(s_dot_relay_m, 10, 10);
-        lv_obj_set_pos(s_dot_relay_m, rx - 8, ry + 2);
-        lv_obj_set_style_bg_color(s_dot_relay_m, COL_OFF, LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(s_dot_relay_m, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(s_dot_relay_m, 0, LV_PART_MAIN);
-        lv_obj_set_style_radius(s_dot_relay_m, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-        lv_obj_clear_flag(s_dot_relay_m, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
-
-        lv_obj_t *lbl_a = lv_label_create(s_scr_main);
-        lv_label_set_text(lbl_a, "A");
-        lv_obj_set_style_text_color(lbl_a, COL_TEXT_DIM, LV_PART_MAIN);
-        lv_obj_set_style_text_font(lbl_a, &lv_font_montserrat_14, LV_PART_MAIN);
-        lv_obj_set_pos(lbl_a, rx - 24, ry + 20);
-
-        s_dot_relay_a = lv_obj_create(s_scr_main);
-        lv_obj_set_size(s_dot_relay_a, 10, 10);
-        lv_obj_set_pos(s_dot_relay_a, rx - 8, ry + 22);
-        lv_obj_set_style_bg_color(s_dot_relay_a, COL_OFF, LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(s_dot_relay_a, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(s_dot_relay_a, 0, LV_PART_MAIN);
-        lv_obj_set_style_radius(s_dot_relay_a, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-        lv_obj_clear_flag(s_dot_relay_a, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_t *btn = lv_button_create(strip);
+        lv_obj_set_size(btn, 26, 26);
+        lv_obj_align(btn, LV_ALIGN_RIGHT_MID, -34, 0);
+        lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_color(btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
+        lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(btn, 4, LV_PART_MAIN);
+        lv_obj_add_event_cb(btn, nav_settings_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_t *lbl = lv_label_create(btn);
+        lv_label_set_text(lbl, LV_SYMBOL_SETTINGS);
+        lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
+        lv_obj_center(lbl);
     }
 
-    // ── Temperature label ────────────────────────────────────────────────────
+    // Info button — 26×26 to fit 28px strip
+    {
+        lv_obj_t *btn = lv_button_create(strip);
+        lv_obj_set_size(btn, 26, 26);
+        lv_obj_align(btn, LV_ALIGN_RIGHT_MID, -4, 0);
+        lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_color(btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
+        lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(btn, 4, LV_PART_MAIN);
+        lv_obj_add_event_cb(btn, nav_info_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_t *lbl = lv_label_create(btn);
+        lv_label_set_text(lbl, LV_SYMBOL_LIST);
+        lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
+        lv_obj_center(lbl);
+    }
+
+    // ── Temperature panel (y=28, h=112) ──────────────────────────────────────
+    // 40pt temp label, centered at ~(panel_center_y - 16) = 68
     s_lbl_temp = lv_label_create(s_scr_main);
-    lv_label_set_text(s_lbl_temp, "---.-\xC2\xB0""F");   // ---.-°F
-    lv_obj_set_style_text_font(s_lbl_temp, &lv_font_montserrat_28, LV_PART_MAIN);
+    lv_label_set_text(s_lbl_temp, "---.-\xC2\xB0""F");
+    lv_obj_set_style_text_font(s_lbl_temp, &lv_font_montserrat_40, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_lbl_temp, COL_TEXT, LV_PART_MAIN);
-    lv_obj_align(s_lbl_temp, LV_ALIGN_TOP_MID, 0, TEMP_Y);
+    lv_obj_align(s_lbl_temp, LV_ALIGN_TOP_MID, 0, TEMP_PANEL_Y + 17);
     // Tap temp label to navigate to history screen
     lv_obj_add_flag(s_lbl_temp, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_lbl_temp, nav_history_cb, LV_EVENT_CLICKED, NULL);
 
-    // ── Schedule status bar (between temp and buttons) ───────────────────────
-    // y=190, height=24; hidden until a schedule is active
-    s_sched_bar = lv_obj_create(s_scr_main);
-    lv_obj_set_pos(s_sched_bar, 0, 190);
-    lv_obj_set_size(s_sched_bar, 480, 24);
-    lv_obj_set_style_bg_color(s_sched_bar, lv_color_hex(0x1e3a5f), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_sched_bar, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(s_sched_bar, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(s_sched_bar, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(s_sched_bar, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(s_sched_bar, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_sched_bar, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_event_cb(s_sched_bar, nav_schedules_cb, LV_EVENT_CLICKED, NULL);
+    // 20pt state label, centered at ~(panel_center_y + 24) = 108
+    s_lbl_state = lv_label_create(s_scr_main);
+    lv_label_set_text(s_lbl_state, "OFF");
+    lv_obj_set_style_text_font(s_lbl_state, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_lbl_state, COL_OFF, LV_PART_MAIN);
+    lv_obj_align(s_lbl_state, LV_ALIGN_TOP_MID, 0, TEMP_PANEL_Y + 69);
 
-    s_sched_bar_lbl = lv_label_create(s_sched_bar);
-    lv_label_set_text(s_sched_bar_lbl, "");
-    lv_obj_set_style_text_color(s_sched_bar_lbl, COL_TEXT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(s_sched_bar_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_align(s_sched_bar_lbl, LV_ALIGN_CENTER, 0, 0);
-
-    // ── Heat control buttons (OFF / WARM / LOW / HIGH) ───────────────────────
+    // ── Heat control buttons (y=148, h=72) ───────────────────────────────────
     for (int i = 0; i < 4; i++) {
         int32_t btn_x = BTN_GAP + i * (BTN_W + BTN_GAP);
 
         lv_obj_t *btn = lv_button_create(s_scr_main);
-        lv_obj_set_pos(btn, btn_x, BTN_Y);
-        lv_obj_set_size(btn, BTN_W, BTN_H);
+        lv_obj_set_pos(btn, btn_x, HEAT_BTN_Y);
+        lv_obj_set_size(btn, BTN_W, HEAT_BTN_H);
         lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_bg_color(btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
-        lv_obj_set_style_border_color(btn, COL_TEXT_DIM, LV_PART_MAIN | LV_STATE_DEFAULT);
-
-        // Dirty trick: COL_TEXT_DIM is a macro, use it as a literal here
         lv_obj_set_style_border_color(btn, lv_color_hex(0x555555),
                                       LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);
-
         lv_obj_add_event_cb(btn, heat_btn_cb, LV_EVENT_CLICKED,
                             (void *)(uintptr_t)k_heat_states[i]);
 
@@ -682,46 +669,81 @@ static void create_main_screen(void)
         s_heat_btns[i] = btn;
     }
 
-    // ── Status bar ───────────────────────────────────────────────────────────
-    lv_obj_t *sbar = lv_obj_create(s_scr_main);
-    lv_obj_set_pos(sbar, 0, STATUSBAR_Y);
-    lv_obj_set_size(sbar, 480, STATUSBAR_H);
-    lv_obj_set_style_bg_color(sbar, COL_SURFACE, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(sbar, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(sbar, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(sbar, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(sbar, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(sbar, LV_OBJ_FLAG_SCROLLABLE);
+    // ── Preset row (y=228, h=72) ──────────────────────────────────────────────
+    // Two overlapping sibling containers; only one visible at a time.
 
-    // WiFi icon — tap to go to WiFi screen
-    s_lbl_wifi = lv_label_create(sbar);
-    lv_label_set_text(s_lbl_wifi, LV_SYMBOL_WIFI);
-    lv_obj_set_style_text_color(s_lbl_wifi, COL_TEXT_DIM, LV_PART_MAIN | LV_STATE_DEFAULT);
-    lv_obj_align(s_lbl_wifi, LV_ALIGN_LEFT_MID, 10, 0);
-    lv_obj_add_flag(s_lbl_wifi, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(s_lbl_wifi, nav_wifi_cb, LV_EVENT_CLICKED, NULL);
+    // Normal container: 4 buttons (3 presets + Custom)
+    s_preset_normal = lv_obj_create(s_scr_main);
+    lv_obj_set_pos(s_preset_normal, 0, PRESET_ROW_Y);
+    lv_obj_set_size(s_preset_normal, 480, PRESET_ROW_H);
+    lv_obj_set_style_bg_opa(s_preset_normal, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_preset_normal, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(s_preset_normal, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_preset_normal, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Uptime — center
-    s_lbl_uptime = lv_label_create(sbar);
-    lv_label_set_text(s_lbl_uptime, "00:00");
-    lv_obj_set_style_text_color(s_lbl_uptime, COL_TEXT_DIM, LV_PART_MAIN);
-    lv_obj_set_style_text_font(s_lbl_uptime, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_align(s_lbl_uptime, LV_ALIGN_CENTER, 0, 0);
+    for (int i = 0; i < 4; i++) {
+        int32_t btn_x = BTN_GAP + i * (BTN_W + BTN_GAP);
 
-    // Settings button (⚙)
-    lv_obj_t *set_btn = make_icon_btn(sbar, LV_SYMBOL_SETTINGS,
-                                      LV_ALIGN_RIGHT_MID, -90, 0);
-    lv_obj_add_event_cb(set_btn, nav_settings_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_t *btn = lv_button_create(s_preset_normal);
+        lv_obj_set_pos(btn, btn_x, 0);
+        lv_obj_set_size(btn, BTN_W, PRESET_ROW_H);
+        lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
+        lv_obj_set_style_bg_color(btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
+        lv_obj_set_style_border_color(btn, lv_color_hex(0x888888), LV_PART_MAIN);
+        lv_obj_set_style_border_width(btn, 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(btn, 8, LV_PART_MAIN);
 
-    // Info button (≡)
-    lv_obj_t *info_btn = make_icon_btn(sbar, LV_SYMBOL_LIST,
-                                       LV_ALIGN_RIGHT_MID, -48, 0);
-    lv_obj_add_event_cb(info_btn, nav_info_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_t *lbl = lv_label_create(btn);
+        lv_label_set_text(lbl, k_preset_labels[i]);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
+        lv_obj_center(lbl);
 
-    // Schedule button (calendar icon)
-    lv_obj_t *sched_btn = make_icon_btn(sbar, LV_SYMBOL_BULLET,
-                                        LV_ALIGN_RIGHT_MID, -6, 0);
-    lv_obj_add_event_cb(sched_btn, nav_schedules_cb, LV_EVENT_CLICKED, NULL);
+        if (i < 3) {
+            lv_obj_add_event_cb(btn, preset_sched_cb, LV_EVENT_CLICKED,
+                                (void *)k_preset_scheds[i]);
+            s_preset_btns[i] = btn;
+        } else {
+            lv_obj_add_event_cb(btn, nav_custom_sched_cb, LV_EVENT_CLICKED, NULL);
+        }
+    }
+
+    // Active container: Stop button + progress label (hidden until schedule runs)
+    s_preset_active = lv_obj_create(s_scr_main);
+    lv_obj_set_pos(s_preset_active, 0, PRESET_ROW_Y);
+    lv_obj_set_size(s_preset_active, 480, PRESET_ROW_H);
+    lv_obj_set_style_bg_opa(s_preset_active, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_preset_active, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(s_preset_active, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_preset_active, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_preset_active, LV_OBJ_FLAG_HIDDEN);
+
+    // Stop button: 90×72 on the left
+    lv_obj_t *stop_btn = lv_button_create(s_preset_active);
+    lv_obj_set_pos(stop_btn, BTN_GAP, 0);
+    lv_obj_set_size(stop_btn, 90, PRESET_ROW_H);
+    lv_obj_set_style_bg_color(stop_btn, COL_ERROR, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(stop_btn, lv_color_hex(0xcc0000),
+                              LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(stop_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(stop_btn, 8, LV_PART_MAIN);
+    lv_obj_add_event_cb(stop_btn, preset_stop_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *stop_lbl = lv_label_create(stop_btn);
+    lv_label_set_text(stop_lbl, "\xe2\x96\xa0 Stop");   // ■ Stop
+    lv_obj_set_style_text_color(stop_lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(stop_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_center(stop_lbl);
+
+    // Progress label fills the rest of the row
+    s_preset_active_lbl = lv_label_create(s_preset_active);
+    lv_label_set_text(s_preset_active_lbl, "");
+    lv_label_set_long_mode(s_preset_active_lbl, LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_text_color(s_preset_active_lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_preset_active_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(s_preset_active_lbl, LV_ALIGN_LEFT_MID,
+                 BTN_GAP + 90 + BTN_GAP, 0);
+    lv_obj_set_width(s_preset_active_lbl, 480 - BTN_GAP - 90 - BTN_GAP * 2);
 }
 
 // ============================================================================
@@ -1207,9 +1229,8 @@ static void update_timer_cb(lv_timer_t *timer)
 
     crockpot_status_t st = crockpot_get_status();
 
-    // Arc + state label
+    // State label
     lv_color_t sc = get_state_color(st.state);
-    lv_obj_set_style_arc_color(s_arc, sc, LV_PART_INDICATOR);
     lv_label_set_text(s_lbl_state, crockpot_state_to_string(st.state));
     lv_obj_set_style_text_color(s_lbl_state, sc, LV_PART_MAIN);
 
@@ -1242,34 +1263,40 @@ static void update_timer_cb(lv_timer_t *timer)
     snprintf(uptime, sizeof(uptime), "%02lu:%02lu", (unsigned long)h, (unsigned long)m);
     lv_label_set_text(s_lbl_uptime, uptime);
 
-    // Relay indicator dots
-    lv_obj_set_style_bg_color(s_dot_relay_m,
-        st.relay_main ? COL_SUCCESS : COL_OFF, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_dot_relay_a,
-        st.relay_aux  ? COL_SUCCESS : COL_OFF, LV_PART_MAIN);
-
-    // Schedule status bar
+    // Preset row: toggle normal ↔ active based on schedule state
     if (st.schedule_active) {
-        lv_obj_clear_flag(s_sched_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_preset_normal, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(s_preset_active, LV_OBJ_FLAG_HIDDEN);
 
-        char sbar_txt[80];
+        char sched_txt[80];
         if (st.schedule_step_remaining_s > 0) {
             uint32_t rem_h = st.schedule_step_remaining_s / 3600;
             uint32_t rem_m = (st.schedule_step_remaining_s % 3600) / 60;
-            snprintf(sbar_txt, sizeof(sbar_txt),
-                     "%s  Step %d/%d  %luh %02lum left",
+            snprintf(sched_txt, sizeof(sched_txt),
+                     "%s  \xe2\x80\xa2  Step %d/%d  \xe2\x80\xa2  %luh %02lum left",
                      st.schedule_name,
                      st.schedule_step + 1, st.schedule_total_steps,
                      (unsigned long)rem_h, (unsigned long)rem_m);
         } else {
-            snprintf(sbar_txt, sizeof(sbar_txt),
-                     "%s  Step %d/%d",
+            snprintf(sched_txt, sizeof(sched_txt),
+                     "%s  \xe2\x80\xa2  Step %d/%d",
                      st.schedule_name,
                      st.schedule_step + 1, st.schedule_total_steps);
         }
-        lv_label_set_text(s_sched_bar_lbl, sbar_txt);
+        lv_label_set_text(s_preset_active_lbl, sched_txt);
     } else {
-        lv_obj_add_flag(s_sched_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(s_preset_normal, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_preset_active, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // Highlight the active preset button (border glow when its schedule is running)
+    for (int i = 0; i < 3; i++) {
+        bool active = st.schedule_active &&
+                      strcmp(st.schedule_name, k_preset_names[i]) == 0;
+        lv_obj_set_style_border_color(s_preset_btns[i],
+            active ? COL_ACCENT : lv_color_hex(0x888888), LV_PART_MAIN);
+        lv_obj_set_style_border_width(s_preset_btns[i],
+            active ? 2 : 1, LV_PART_MAIN);
     }
 
     // History chart: update every tick (500 ms timer), but track data per call
