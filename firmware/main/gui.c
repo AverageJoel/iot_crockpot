@@ -4,23 +4,18 @@
  *
  * Layout (480×320 landscape):
  *
- *   y=0   ┌─────────────────────────────────────────────┐
- *         │ ≋ WiFi       00:42                  ⚙  ≡    │ h=28  top strip
- *   y=28  ├─────────────────────────────────────────────┤
- *         │              142.5°F                         │ h=112 temp panel
- *         │              ● LOW                           │
- *   y=140 ├─────────────────────────────────────────────┤
- *         │  (8px gap)                                   │
- *   y=148 │ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐│
- *         │ │  OFF   │ │  WARM  │ │✓ LOW   │ │  HIGH  ││ h=72  heat buttons
- *         │ └────────┘ └────────┘ └────────┘ └────────┘│
- *   y=220 ├─────────────────────────────────────────────┤
- *         │  (8px gap)                                   │
- *   y=228 │ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐│
- *         │ │SlwCook │ │QkWarm  │ │All Day │ │Custom  ││ h=72  preset row
- *         │ └────────┘ └────────┘ └────────┘ └────────┘│
- *   y=300 │  (20px bottom padding)                      │
- *   y=320 └─────────────────────────────────────────────┘
+ *   y=0   ┌─────────────────────────────────────────────────────┐
+ *         │ ≋ WiFi      00:42                       ⚙    ≡      │ h=36  top strip
+ *   y=36  ├─────────────────────────────────────────────────────┤
+ *         │              142.5°F                                 │ h=88  temp panel
+ *         │              ● LOW                                   │
+ *   y=124 ├─────────────────────────────────────────────────────┤
+ *         │  [    Manual      ]  [    Schedule    ]              │ h=36  tab bar
+ *   y=160 ├─────────────────────────────────────────────────────┤
+ *         │                                                      │
+ *         │  (button area — contents swap per active tab)        │ h=144
+ *         │                                                      │
+ *   y=304 └────────────────(16px bottom margin)──────────────────┘
  *
  * The LVGL task is owned by esp_lvgl_port — no separate FreeRTOS task.
  * Timer callbacks and event callbacks run in the LVGL task; public API
@@ -63,13 +58,13 @@ static const char *TAG = "gui";
 // Layout constants (480×320 landscape)
 // ============================================================================
 
-#define STRIP_H         28    // top status strip height
-#define TEMP_PANEL_Y    28    // top of temperature panel
-#define TEMP_PANEL_H    112   // temperature panel height
-#define HEAT_BTN_Y      148   // 28 + 112 + 8 gap
-#define HEAT_BTN_H      72    // heat button height
-#define PRESET_ROW_Y    228   // 148 + 72 + 8 gap
-#define PRESET_ROW_H    72    // preset row height
+#define STRIP_H         36    // top status strip height
+#define TEMP_PANEL_Y    36    // top of temperature panel
+#define TEMP_PANEL_H    88    // temperature panel height
+#define TAB_BAR_Y       124   // 36 + 88
+#define TAB_BAR_H       36    // tab bar height
+#define BTN_AREA_Y      160   // 124 + 36
+#define BTN_AREA_H      144   // unified button area height
 #define BTN_GAP         8     // gap between / around buttons
 // Button width: (480 - 5 gaps) / 4 = (480 - 40) / 4 = 110
 #define BTN_W           110
@@ -121,11 +116,26 @@ static lv_obj_t *s_lbl_wifi;       // WiFi symbol (color changes)
 static lv_obj_t *s_lbl_uptime;     // "01:23"
 static lv_obj_t *s_heat_btns[4];   // OFF, WARM, LOW, HIGH buttons
 
-// Main screen preset row
-static lv_obj_t *s_preset_normal;     // container: 4 preset/custom buttons (default)
-static lv_obj_t *s_preset_active;     // container: stop + progress (schedule running)
-static lv_obj_t *s_preset_btns[3];    // Slow Cook, Quick Warm, All Day
-static lv_obj_t *s_preset_active_lbl; // "Slow Cook • Step 2/3 • 2h 30m left"
+// Main screen tab bar
+static lv_obj_t *s_tab_btn_manual;
+static lv_obj_t *s_tab_btn_sched;
+
+// Main screen button area containers (one visible at a time)
+static lv_obj_t *s_cont_manual;           // heat buttons (may be dimmed)
+static lv_obj_t *s_cont_sched_idle;       // preset buttons + optional resume
+static lv_obj_t *s_cont_sched_active;     // progress label + stop button
+
+// Schedule/resume widgets
+static lv_obj_t *s_btn_resume;            // resume button in sched_idle
+static lv_obj_t *s_lbl_resume;            // label inside resume button
+static lv_obj_t *s_sched_active_lbl;      // progress label in sched_active
+static lv_obj_t *s_stop_dialog;           // confirmation overlay (NULL when hidden)
+static lv_obj_t *s_preset_sched_btns[4];  // Slow Cook, Quick Warm, All Day, Custom
+
+// Tab and schedule tracking state
+static bool s_tab_manual         = true;
+static bool s_prev_sched_active  = false;
+static const crockpot_schedule_t *s_last_schedule = NULL;
 
 // Settings screen
 static lv_obj_t *s_cf_lbl;         // "Units: Fahrenheit (°F)"
@@ -144,6 +154,9 @@ static lv_chart_series_t  *s_chart_series;
 static lv_obj_t           *s_lbl_hist_min;
 static lv_obj_t           *s_lbl_hist_current;
 static lv_obj_t           *s_lbl_hist_max;
+static lv_obj_t           *s_lbl_hist_y_top;  // Y-axis top label
+static lv_obj_t           *s_lbl_hist_y_mid;  // Y-axis mid label
+static lv_obj_t           *s_lbl_hist_y_bot;  // Y-axis bottom label
 static float               s_hist_min      = 9999.0f;
 static float               s_hist_max      = -9999.0f;
 static uint32_t            s_hist_ticks    = 0;   // incremented each timer call
@@ -331,19 +344,120 @@ static void preset_sched_cb(lv_event_t *e)
     wake();
     const crockpot_schedule_t *sched =
         (const crockpot_schedule_t *)lv_event_get_user_data(e);
+    s_last_schedule = sched;
     crockpot_schedule_start(sched);
     char msg[48];
     snprintf(msg, sizeof(msg), "Started: %s", sched->name);
     gui_show_message(msg, 2000);
 }
 
-/** Tap Stop in active row → stop current schedule */
+/** Cancel button in stop confirmation dialog */
+static void stop_cancel_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    if (s_stop_dialog) {
+        lv_obj_delete(s_stop_dialog);
+        s_stop_dialog = NULL;
+    }
+}
+
+/** Confirm button in stop confirmation dialog */
+static void stop_confirm_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    if (s_stop_dialog) {
+        lv_obj_delete(s_stop_dialog);
+        s_stop_dialog = NULL;
+    }
+    // Save last schedule before stopping
+    crockpot_status_t st = crockpot_get_status();
+    if (st.schedule_active) {
+        s_last_schedule = NULL;
+        for (int i = 0; i < 3; i++) {
+            if (strcmp(st.schedule_name, k_preset_names[i]) == 0) {
+                s_last_schedule = k_preset_scheds[i];
+                break;
+            }
+        }
+        if (!s_last_schedule && strcmp(st.schedule_name, "Custom") == 0) {
+            s_last_schedule = &s_custom_schedule;
+        }
+    }
+    crockpot_schedule_stop();
+    gui_show_message("Schedule stopped", 2000);
+}
+
+/** Tap Stop in active row → open confirmation dialog */
 static void preset_stop_cb(lv_event_t *e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     wake();
-    crockpot_schedule_stop();
-    gui_show_message("Schedule stopped", 2000);
+    if (s_stop_dialog) return;  // already showing
+
+    // Semi-transparent overlay — tap outside dialog cancels
+    s_stop_dialog = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(s_stop_dialog, 480, 320);
+    lv_obj_set_pos(s_stop_dialog, 0, 0);
+    lv_obj_set_style_bg_color(s_stop_dialog, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_stop_dialog, LV_OPA_50, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_stop_dialog, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_stop_dialog, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_stop_dialog, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_stop_dialog, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(s_stop_dialog, stop_cancel_cb, LV_EVENT_CLICKED, NULL);
+
+    // Dialog box centered on overlay
+    lv_obj_t *dlg = lv_obj_create(s_stop_dialog);
+    lv_obj_set_size(dlg, 340, 180);
+    lv_obj_center(dlg);
+    lv_obj_set_style_bg_color(dlg, COL_SURFACE, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(dlg, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(dlg, COL_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_border_width(dlg, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(dlg, 12, LV_PART_MAIN);
+    lv_obj_clear_flag(dlg, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t *title = lv_label_create(dlg);
+    lv_label_set_text(title, "Stop Schedule?");
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, COL_TEXT, LV_PART_MAIN);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
+
+    lv_obj_t *body = lv_label_create(dlg);
+    lv_label_set_text(body, "The crockpot will hold its\ncurrent heat level.");
+    lv_obj_set_style_text_font(body, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(body, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_align(body, LV_ALIGN_TOP_MID, 0, 56);
+
+    lv_obj_t *cancel_btn = lv_button_create(dlg);
+    lv_obj_set_size(cancel_btn, 120, 44);
+    lv_obj_align(cancel_btn, LV_ALIGN_BOTTOM_LEFT, 16, -16);
+    lv_obj_set_style_bg_color(cancel_btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(cancel_btn, COL_ACCENT, LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_color(cancel_btn, COL_ACCENT, LV_PART_MAIN);
+    lv_obj_set_style_border_width(cancel_btn, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(cancel_btn, 8, LV_PART_MAIN);
+    lv_obj_add_event_cb(cancel_btn, stop_cancel_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *cancel_lbl = lv_label_create(cancel_btn);
+    lv_label_set_text(cancel_lbl, "Cancel");
+    lv_obj_set_style_text_color(cancel_lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(cancel_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_center(cancel_lbl);
+
+    lv_obj_t *stop_btn = lv_button_create(dlg);
+    lv_obj_set_size(stop_btn, 120, 44);
+    lv_obj_align(stop_btn, LV_ALIGN_BOTTOM_RIGHT, -16, -16);
+    lv_obj_set_style_bg_color(stop_btn, COL_ERROR, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(stop_btn, lv_color_hex(0xcc0000),
+                              LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(stop_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(stop_btn, 8, LV_PART_MAIN);
+    lv_obj_add_event_cb(stop_btn, stop_confirm_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *stop_lbl = lv_label_create(stop_btn);
+    lv_label_set_text(stop_lbl, "\xe2\x96\xa0 Stop");
+    lv_obj_set_style_text_color(stop_lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(stop_lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_center(stop_lbl);
 }
 
 /** Tap Custom → open schedule builder directly */
@@ -353,6 +467,34 @@ static void nav_custom_sched_cb(lv_event_t *e)
     wake();
     s_current = GUI_SCREEN_SCHEDULE_BUILD;
     lv_screen_load_anim(s_scr_schedule_build, LV_SCR_LOAD_ANIM_MOVE_LEFT, 200, 0, false);
+}
+
+/** Tap Manual tab button */
+static void tab_manual_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    s_tab_manual = true;
+}
+
+/** Tap Schedule tab button */
+static void tab_sched_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    s_tab_manual = false;
+}
+
+/** Tap Resume → restart the last stopped schedule from step 1 */
+static void resume_sched_cb(lv_event_t *e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+    wake();
+    if (!s_last_schedule) return;
+    crockpot_schedule_start(s_last_schedule);
+    char msg[48];
+    snprintf(msg, sizeof(msg), "Resumed: %s", s_last_schedule->name);
+    gui_show_message(msg, 2000);
 }
 
 // ── Schedule preset button callback (used by schedules screen) ────────────────
@@ -488,6 +630,7 @@ static void build_start_cb(lv_event_t *e)
     }
     s_custom_schedule.num_steps = s_build_step_count;
 
+    s_last_schedule = &s_custom_schedule;
     crockpot_schedule_start(&s_custom_schedule);
     gui_show_message("Custom schedule started", 3000);
     s_current = GUI_SCREEN_MAIN;
@@ -568,7 +711,7 @@ static void create_main_screen(void)
     s_scr_main = lv_obj_create(NULL);
     style_screen(s_scr_main);
 
-    // ── Top status strip (y=0, h=28) ─────────────────────────────────────────
+    // ── Top status strip (y=0, h=36) ─────────────────────────────────────────
     lv_obj_t *strip = lv_obj_create(s_scr_main);
     lv_obj_set_pos(strip, 0, 0);
     lv_obj_set_size(strip, 480, STRIP_H);
@@ -594,11 +737,11 @@ static void create_main_screen(void)
     lv_obj_set_style_text_font(s_lbl_uptime, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_align(s_lbl_uptime, LV_ALIGN_CENTER, 0, 0);
 
-    // Settings button — 26×26 to fit 28px strip
+    // Settings button — 32×32
     {
         lv_obj_t *btn = lv_button_create(strip);
-        lv_obj_set_size(btn, 26, 26);
-        lv_obj_align(btn, LV_ALIGN_RIGHT_MID, -34, 0);
+        lv_obj_set_size(btn, 32, 32);
+        lv_obj_align(btn, LV_ALIGN_RIGHT_MID, -40, 0);
         lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_bg_color(btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
         lv_obj_set_style_border_width(btn, 0, LV_PART_MAIN);
@@ -610,10 +753,10 @@ static void create_main_screen(void)
         lv_obj_center(lbl);
     }
 
-    // Info button — 26×26 to fit 28px strip
+    // Info button — 32×32
     {
         lv_obj_t *btn = lv_button_create(strip);
-        lv_obj_set_size(btn, 26, 26);
+        lv_obj_set_size(btn, 32, 32);
         lv_obj_align(btn, LV_ALIGN_RIGHT_MID, -4, 0);
         lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_bg_color(btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
@@ -626,31 +769,72 @@ static void create_main_screen(void)
         lv_obj_center(lbl);
     }
 
-    // ── Temperature panel (y=28, h=112) ──────────────────────────────────────
-    // 40pt temp label, centered at ~(panel_center_y - 16) = 68
+    // ── Temperature panel (y=36, h=88) ───────────────────────────────────────
     s_lbl_temp = lv_label_create(s_scr_main);
     lv_label_set_text(s_lbl_temp, "---.-\xC2\xB0""F");
     lv_obj_set_style_text_font(s_lbl_temp, &lv_font_montserrat_40, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_lbl_temp, COL_TEXT, LV_PART_MAIN);
-    lv_obj_align(s_lbl_temp, LV_ALIGN_TOP_MID, 0, TEMP_PANEL_Y + 17);
-    // Tap temp label to navigate to history screen
+    lv_obj_align(s_lbl_temp, LV_ALIGN_TOP_MID, 0, TEMP_PANEL_Y + 10);
     lv_obj_add_flag(s_lbl_temp, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(s_lbl_temp, nav_history_cb, LV_EVENT_CLICKED, NULL);
 
-    // 20pt state label, centered at ~(panel_center_y + 24) = 108
     s_lbl_state = lv_label_create(s_scr_main);
     lv_label_set_text(s_lbl_state, "OFF");
     lv_obj_set_style_text_font(s_lbl_state, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(s_lbl_state, COL_OFF, LV_PART_MAIN);
-    lv_obj_align(s_lbl_state, LV_ALIGN_TOP_MID, 0, TEMP_PANEL_Y + 69);
+    lv_obj_align(s_lbl_state, LV_ALIGN_TOP_MID, 0, TEMP_PANEL_Y + 56);
 
-    // ── Heat control buttons (y=148, h=72) ───────────────────────────────────
+    // ── Tab bar (y=124, h=36) ─────────────────────────────────────────────────
+    s_tab_btn_manual = lv_button_create(s_scr_main);
+    lv_obj_set_pos(s_tab_btn_manual, 0, TAB_BAR_Y);
+    lv_obj_set_size(s_tab_btn_manual, 232, TAB_BAR_H);
+    lv_obj_set_style_bg_color(s_tab_btn_manual, COL_ACCENT, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(s_tab_btn_manual, COL_ACCENT, LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(s_tab_btn_manual, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_tab_btn_manual, 0, LV_PART_MAIN);
+    lv_obj_add_event_cb(s_tab_btn_manual, tab_manual_cb, LV_EVENT_CLICKED, NULL);
+    {
+        lv_obj_t *lbl = lv_label_create(s_tab_btn_manual);
+        lv_label_set_text(lbl, LV_SYMBOL_POWER "  Manual");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
+        lv_obj_center(lbl);
+    }
+
+    s_tab_btn_sched = lv_button_create(s_scr_main);
+    lv_obj_set_pos(s_tab_btn_sched, 248, TAB_BAR_Y);
+    lv_obj_set_size(s_tab_btn_sched, 232, TAB_BAR_H);
+    lv_obj_set_style_bg_color(s_tab_btn_sched, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(s_tab_btn_sched, COL_ACCENT, LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(s_tab_btn_sched, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_tab_btn_sched, 0, LV_PART_MAIN);
+    lv_obj_add_event_cb(s_tab_btn_sched, tab_sched_cb, LV_EVENT_CLICKED, NULL);
+    {
+        lv_obj_t *lbl = lv_label_create(s_tab_btn_sched);
+        lv_label_set_text(lbl, LV_SYMBOL_REFRESH "  Schedule");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
+        lv_obj_center(lbl);
+    }
+
+    // ── Button area containers (y=160, h=144) ─────────────────────────────────
+    // All three are the same position/size; only one is visible at a time.
+
+    // A: s_cont_manual — Manual tab (default visible)
+    s_cont_manual = lv_obj_create(s_scr_main);
+    lv_obj_set_pos(s_cont_manual, 0, BTN_AREA_Y);
+    lv_obj_set_size(s_cont_manual, 480, BTN_AREA_H);
+    lv_obj_set_style_bg_opa(s_cont_manual, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_cont_manual, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(s_cont_manual, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_cont_manual, LV_OBJ_FLAG_SCROLLABLE);
+
     for (int i = 0; i < 4; i++) {
         int32_t btn_x = BTN_GAP + i * (BTN_W + BTN_GAP);
 
-        lv_obj_t *btn = lv_button_create(s_scr_main);
-        lv_obj_set_pos(btn, btn_x, HEAT_BTN_Y);
-        lv_obj_set_size(btn, BTN_W, HEAT_BTN_H);
+        lv_obj_t *btn = lv_button_create(s_cont_manual);
+        lv_obj_set_pos(btn, btn_x, 0);
+        lv_obj_set_size(btn, BTN_W, BTN_AREA_H);
         lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_bg_color(btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
         lv_obj_set_style_border_color(btn, lv_color_hex(0x555555),
@@ -662,31 +846,29 @@ static void create_main_screen(void)
 
         lv_obj_t *lbl = lv_label_create(btn);
         lv_label_set_text(lbl, k_heat_labels[i]);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_20, LV_PART_MAIN);
         lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
         lv_obj_center(lbl);
 
         s_heat_btns[i] = btn;
     }
 
-    // ── Preset row (y=228, h=72) ──────────────────────────────────────────────
-    // Two overlapping sibling containers; only one visible at a time.
-
-    // Normal container: 4 buttons (3 presets + Custom)
-    s_preset_normal = lv_obj_create(s_scr_main);
-    lv_obj_set_pos(s_preset_normal, 0, PRESET_ROW_Y);
-    lv_obj_set_size(s_preset_normal, 480, PRESET_ROW_H);
-    lv_obj_set_style_bg_opa(s_preset_normal, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(s_preset_normal, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(s_preset_normal, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(s_preset_normal, LV_OBJ_FLAG_SCROLLABLE);
+    // B: s_cont_sched_idle — Schedule tab, no schedule active (hidden by default)
+    s_cont_sched_idle = lv_obj_create(s_scr_main);
+    lv_obj_set_pos(s_cont_sched_idle, 0, BTN_AREA_Y);
+    lv_obj_set_size(s_cont_sched_idle, 480, BTN_AREA_H);
+    lv_obj_set_style_bg_opa(s_cont_sched_idle, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_cont_sched_idle, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(s_cont_sched_idle, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_cont_sched_idle, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_cont_sched_idle, LV_OBJ_FLAG_HIDDEN);
 
     for (int i = 0; i < 4; i++) {
         int32_t btn_x = BTN_GAP + i * (BTN_W + BTN_GAP);
 
-        lv_obj_t *btn = lv_button_create(s_preset_normal);
+        lv_obj_t *btn = lv_button_create(s_cont_sched_idle);
         lv_obj_set_pos(btn, btn_x, 0);
-        lv_obj_set_size(btn, BTN_W, PRESET_ROW_H);
+        lv_obj_set_size(btn, BTN_W, BTN_AREA_H);  // height updated by update_main_button_area
         lv_obj_set_style_bg_color(btn, COL_SURFACE, LV_PART_MAIN | LV_STATE_DEFAULT);
         lv_obj_set_style_bg_color(btn, COL_ACCENT,  LV_PART_MAIN | LV_STATE_PRESSED);
         lv_obj_set_style_border_color(btn, lv_color_hex(0x888888), LV_PART_MAIN);
@@ -695,33 +877,59 @@ static void create_main_screen(void)
 
         lv_obj_t *lbl = lv_label_create(btn);
         lv_label_set_text(lbl, k_preset_labels[i]);
-        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, LV_PART_MAIN);
         lv_obj_set_style_text_color(lbl, COL_TEXT, LV_PART_MAIN);
         lv_obj_center(lbl);
 
         if (i < 3) {
             lv_obj_add_event_cb(btn, preset_sched_cb, LV_EVENT_CLICKED,
                                 (void *)k_preset_scheds[i]);
-            s_preset_btns[i] = btn;
         } else {
             lv_obj_add_event_cb(btn, nav_custom_sched_cb, LV_EVENT_CLICKED, NULL);
         }
+        s_preset_sched_btns[i] = btn;
     }
 
-    // Active container: Stop button + progress label (hidden until schedule runs)
-    s_preset_active = lv_obj_create(s_scr_main);
-    lv_obj_set_pos(s_preset_active, 0, PRESET_ROW_Y);
-    lv_obj_set_size(s_preset_active, 480, PRESET_ROW_H);
-    lv_obj_set_style_bg_opa(s_preset_active, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(s_preset_active, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(s_preset_active, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(s_preset_active, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_preset_active, LV_OBJ_FLAG_HIDDEN);
+    // Resume button — shown only after a schedule has been stopped
+    s_btn_resume = lv_button_create(s_cont_sched_idle);
+    lv_obj_set_pos(s_btn_resume, 9, 108);
+    lv_obj_set_size(s_btn_resume, 462, 36);
+    lv_obj_set_style_bg_color(s_btn_resume, COL_SUCCESS, LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(s_btn_resume, lv_color_hex(0x009933),
+                              LV_PART_MAIN | LV_STATE_PRESSED);
+    lv_obj_set_style_border_width(s_btn_resume, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_btn_resume, 6, LV_PART_MAIN);
+    lv_obj_add_event_cb(s_btn_resume, resume_sched_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(s_btn_resume, LV_OBJ_FLAG_HIDDEN);
 
-    // Stop button: 90×72 on the left
-    lv_obj_t *stop_btn = lv_button_create(s_preset_active);
-    lv_obj_set_pos(stop_btn, BTN_GAP, 0);
-    lv_obj_set_size(stop_btn, 90, PRESET_ROW_H);
+    s_lbl_resume = lv_label_create(s_btn_resume);
+    lv_label_set_text(s_lbl_resume, "\xe2\x86\xba  Resume");
+    lv_obj_set_style_text_font(s_lbl_resume, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_lbl_resume, COL_TEXT, LV_PART_MAIN);
+    lv_obj_center(s_lbl_resume);
+
+    // C: s_cont_sched_active — Schedule tab, schedule running (hidden by default)
+    s_cont_sched_active = lv_obj_create(s_scr_main);
+    lv_obj_set_pos(s_cont_sched_active, 0, BTN_AREA_Y);
+    lv_obj_set_size(s_cont_sched_active, 480, BTN_AREA_H);
+    lv_obj_set_style_bg_opa(s_cont_sched_active, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_cont_sched_active, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(s_cont_sched_active, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(s_cont_sched_active, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_cont_sched_active, LV_OBJ_FLAG_HIDDEN);
+
+    s_sched_active_lbl = lv_label_create(s_cont_sched_active);
+    lv_label_set_text(s_sched_active_lbl, "");
+    lv_label_set_long_mode(s_sched_active_lbl, LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_text_color(s_sched_active_lbl, COL_TEXT, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_sched_active_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_align(s_sched_active_lbl, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_pos(s_sched_active_lbl, 0, 8);
+    lv_obj_set_width(s_sched_active_lbl, 480);
+
+    lv_obj_t *stop_btn = lv_button_create(s_cont_sched_active);
+    lv_obj_set_pos(stop_btn, 9, 40);
+    lv_obj_set_size(stop_btn, 462, 104);
     lv_obj_set_style_bg_color(stop_btn, COL_ERROR, LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(stop_btn, lv_color_hex(0xcc0000),
                               LV_PART_MAIN | LV_STATE_PRESSED);
@@ -730,20 +938,10 @@ static void create_main_screen(void)
     lv_obj_add_event_cb(stop_btn, preset_stop_cb, LV_EVENT_CLICKED, NULL);
 
     lv_obj_t *stop_lbl = lv_label_create(stop_btn);
-    lv_label_set_text(stop_lbl, "\xe2\x96\xa0 Stop");   // ■ Stop
+    lv_label_set_text(stop_lbl, "\xe2\x96\xa0  Stop Schedule");
     lv_obj_set_style_text_color(stop_lbl, COL_TEXT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(stop_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_set_style_text_font(stop_lbl, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_center(stop_lbl);
-
-    // Progress label fills the rest of the row
-    s_preset_active_lbl = lv_label_create(s_preset_active);
-    lv_label_set_text(s_preset_active_lbl, "");
-    lv_label_set_long_mode(s_preset_active_lbl, LV_LABEL_LONG_CLIP);
-    lv_obj_set_style_text_color(s_preset_active_lbl, COL_TEXT, LV_PART_MAIN);
-    lv_obj_set_style_text_font(s_preset_active_lbl, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_align(s_preset_active_lbl, LV_ALIGN_LEFT_MID,
-                 BTN_GAP + 90 + BTN_GAP, 0);
-    lv_obj_set_width(s_preset_active_lbl, 480 - BTN_GAP - 90 - BTN_GAP * 2);
 }
 
 // ============================================================================
@@ -854,10 +1052,10 @@ static void create_history_screen(void)
 
     add_screen_title(s_scr_history, "Temperature History");
 
-    // Chart — 480×220, below title
+    // Chart — 420×170, shifted right to leave room for Y-axis labels on the left
     s_chart = lv_chart_create(s_scr_history);
-    lv_obj_set_size(s_chart, 460, 200);
-    lv_obj_align(s_chart, LV_ALIGN_TOP_MID, 0, 44);
+    lv_obj_set_size(s_chart, 420, 170);
+    lv_obj_align(s_chart, LV_ALIGN_TOP_MID, 0, 50);
     lv_chart_set_type(s_chart, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(s_chart, HISTORY_POINTS);
     lv_chart_set_range(s_chart, LV_CHART_AXIS_PRIMARY_Y, 60, 320);
@@ -868,28 +1066,66 @@ static void create_history_screen(void)
 
     s_chart_series = lv_chart_add_series(s_chart, COL_ACCENT,
                                          LV_CHART_AXIS_PRIMARY_Y);
-
-    // Initialize all points to the "no data" value
     lv_chart_set_all_value(s_chart, s_chart_series, LV_CHART_POINT_NONE);
 
-    // Min / current / max labels at bottom
+    // Y-axis labels (left of chart; chart left edge ≈ x=30)
+    s_lbl_hist_y_top = lv_label_create(s_scr_history);
+    lv_label_set_text(s_lbl_hist_y_top, "320\xC2\xB0""F");
+    lv_obj_set_style_text_color(s_lbl_hist_y_top, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_lbl_hist_y_top, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(s_lbl_hist_y_top, LV_ALIGN_TOP_LEFT, 2, 50);
+
+    s_lbl_hist_y_mid = lv_label_create(s_scr_history);
+    lv_label_set_text(s_lbl_hist_y_mid, "190\xC2\xB0""F");
+    lv_obj_set_style_text_color(s_lbl_hist_y_mid, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_lbl_hist_y_mid, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(s_lbl_hist_y_mid, LV_ALIGN_TOP_LEFT, 2, 128);
+
+    s_lbl_hist_y_bot = lv_label_create(s_scr_history);
+    lv_label_set_text(s_lbl_hist_y_bot, "60\xC2\xB0""F");
+    lv_obj_set_style_text_color(s_lbl_hist_y_bot, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(s_lbl_hist_y_bot, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(s_lbl_hist_y_bot, LV_ALIGN_TOP_LEFT, 2, 208);
+
+    // X-axis labels (below chart — fixed 2-minute rolling window)
+    lv_obj_t *x_left = lv_label_create(s_scr_history);
+    lv_label_set_text(x_left, "2m ago");
+    lv_obj_set_style_text_color(x_left, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(x_left, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(x_left, LV_ALIGN_TOP_LEFT, 30, 224);
+
+    lv_obj_t *x_mid = lv_label_create(s_scr_history);
+    lv_label_set_text(x_mid, "1m ago");
+    lv_obj_set_style_text_color(x_mid, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(x_mid, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(x_mid, LV_ALIGN_TOP_MID, 0, 224);
+
+    lv_obj_t *x_right = lv_label_create(s_scr_history);
+    lv_label_set_text(x_right, "Now");
+    lv_obj_set_style_text_color(x_right, COL_TEXT_DIM, LV_PART_MAIN);
+    lv_obj_set_style_text_font(x_right, &lv_font_montserrat_14, LV_PART_MAIN);
+    lv_obj_align(x_right, LV_ALIGN_TOP_RIGHT, -30, 224);
+
+    // Min / current / max session stats
     s_lbl_hist_min = lv_label_create(s_scr_history);
     lv_label_set_text(s_lbl_hist_min, "Min: --");
     lv_obj_set_style_text_color(s_lbl_hist_min, COL_TEXT_DIM, LV_PART_MAIN);
     lv_obj_set_style_text_font(s_lbl_hist_min, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_align(s_lbl_hist_min, LV_ALIGN_BOTTOM_LEFT, 10, -8);
+    lv_obj_align(s_lbl_hist_min, LV_ALIGN_TOP_LEFT, 10, 242);
 
     s_lbl_hist_current = lv_label_create(s_scr_history);
     lv_label_set_text(s_lbl_hist_current, "Now: --");
     lv_obj_set_style_text_color(s_lbl_hist_current, COL_TEXT, LV_PART_MAIN);
     lv_obj_set_style_text_font(s_lbl_hist_current, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_align(s_lbl_hist_current, LV_ALIGN_BOTTOM_MID, 0, -8);
+    lv_obj_align(s_lbl_hist_current, LV_ALIGN_TOP_MID, 0, 242);
 
     s_lbl_hist_max = lv_label_create(s_scr_history);
     lv_label_set_text(s_lbl_hist_max, "Max: --");
     lv_obj_set_style_text_color(s_lbl_hist_max, COL_ERROR, LV_PART_MAIN);
     lv_obj_set_style_text_font(s_lbl_hist_max, &lv_font_montserrat_14, LV_PART_MAIN);
-    lv_obj_align(s_lbl_hist_max, LV_ALIGN_BOTTOM_RIGHT, -10, -8);
+    lv_obj_align(s_lbl_hist_max, LV_ALIGN_TOP_RIGHT, -10, 242);
+
+    add_back_button(s_scr_history);
 }
 
 // ============================================================================
@@ -1223,6 +1459,98 @@ static void update_heat_highlights(crockpot_state_t state)
     }
 }
 
+static void update_tab_highlights(void)
+{
+    lv_obj_set_style_bg_color(s_tab_btn_manual,
+        s_tab_manual ? COL_ACCENT : COL_SURFACE,
+        LV_PART_MAIN | LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(s_tab_btn_sched,
+        s_tab_manual ? COL_SURFACE : COL_ACCENT,
+        LV_PART_MAIN | LV_STATE_DEFAULT);
+}
+
+static void update_main_button_area(crockpot_status_t *st)
+{
+    // Auto-switch to Schedule tab when schedule first becomes active
+    if (st->schedule_active && !s_prev_sched_active) {
+        s_tab_manual = false;
+    }
+    update_tab_highlights();
+    s_prev_sched_active = st->schedule_active;
+
+    if (s_tab_manual) {
+        lv_obj_clear_flag(s_cont_manual, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_cont_sched_idle, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_cont_sched_active, LV_OBJ_FLAG_HIDDEN);
+        // Dim/disable heat buttons while a schedule is running
+        for (int i = 0; i < 4; i++) {
+            if (st->schedule_active) {
+                lv_obj_clear_flag(s_heat_btns[i], LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_set_style_opa(s_heat_btns[i], LV_OPA_50, LV_PART_MAIN);
+            } else {
+                lv_obj_add_flag(s_heat_btns[i], LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_set_style_opa(s_heat_btns[i], LV_OPA_COVER, LV_PART_MAIN);
+            }
+        }
+    } else {
+        lv_obj_add_flag(s_cont_manual, LV_OBJ_FLAG_HIDDEN);
+        if (st->schedule_active) {
+            lv_obj_clear_flag(s_cont_sched_active, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(s_cont_sched_idle, LV_OBJ_FLAG_HIDDEN);
+            // Update progress label
+            char sched_txt[80];
+            if (st->schedule_step_remaining_s > 0) {
+                uint32_t rem_h = st->schedule_step_remaining_s / 3600;
+                uint32_t rem_m = (st->schedule_step_remaining_s % 3600) / 60;
+                snprintf(sched_txt, sizeof(sched_txt),
+                         "%s  \xe2\x80\xa2  Step %d/%d  \xe2\x80\xa2  %luh %02lum left",
+                         st->schedule_name,
+                         st->schedule_step + 1, st->schedule_total_steps,
+                         (unsigned long)rem_h, (unsigned long)rem_m);
+            } else {
+                snprintf(sched_txt, sizeof(sched_txt),
+                         "%s  \xe2\x80\xa2  Step %d/%d",
+                         st->schedule_name,
+                         st->schedule_step + 1, st->schedule_total_steps);
+            }
+            lv_label_set_text(s_sched_active_lbl, sched_txt);
+        } else {
+            lv_obj_clear_flag(s_cont_sched_idle, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(s_cont_sched_active, LV_OBJ_FLAG_HIDDEN);
+            // Show/hide resume button based on whether a schedule was ever stopped
+            if (s_last_schedule) {
+                // Resize preset buttons to 100px to make room for resume strip
+                for (int i = 0; i < 4; i++) {
+                    lv_obj_set_height(s_preset_sched_btns[i], 100);
+                }
+                lv_obj_clear_flag(s_btn_resume, LV_OBJ_FLAG_HIDDEN);
+                char resume_txt[48];
+                snprintf(resume_txt, sizeof(resume_txt),
+                         "\xe2\x86\xba  Resume: %s", s_last_schedule->name);
+                lv_label_set_text(s_lbl_resume, resume_txt);
+            } else {
+                // Full-height preset buttons, no resume strip
+                for (int i = 0; i < 4; i++) {
+                    lv_obj_set_height(s_preset_sched_btns[i], BTN_AREA_H);
+                }
+                lv_obj_add_flag(s_btn_resume, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+    }
+
+    // Highlight the active preset button (border glow when its schedule is running)
+    for (int i = 0; i < 3; i++) {
+        if (s_preset_sched_btns[i]) {
+            bool active = st->schedule_active &&
+                          strcmp(st->schedule_name, k_preset_names[i]) == 0;
+            lv_obj_set_style_border_color(s_preset_sched_btns[i],
+                active ? COL_ACCENT : lv_color_hex(0x888888), LV_PART_MAIN);
+            lv_obj_set_style_border_width(s_preset_sched_btns[i],
+                active ? 2 : 1, LV_PART_MAIN);
+        }
+    }
+}
+
 static void update_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
@@ -1263,41 +1591,8 @@ static void update_timer_cb(lv_timer_t *timer)
     snprintf(uptime, sizeof(uptime), "%02lu:%02lu", (unsigned long)h, (unsigned long)m);
     lv_label_set_text(s_lbl_uptime, uptime);
 
-    // Preset row: toggle normal ↔ active based on schedule state
-    if (st.schedule_active) {
-        lv_obj_add_flag(s_preset_normal, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(s_preset_active, LV_OBJ_FLAG_HIDDEN);
-
-        char sched_txt[80];
-        if (st.schedule_step_remaining_s > 0) {
-            uint32_t rem_h = st.schedule_step_remaining_s / 3600;
-            uint32_t rem_m = (st.schedule_step_remaining_s % 3600) / 60;
-            snprintf(sched_txt, sizeof(sched_txt),
-                     "%s  \xe2\x80\xa2  Step %d/%d  \xe2\x80\xa2  %luh %02lum left",
-                     st.schedule_name,
-                     st.schedule_step + 1, st.schedule_total_steps,
-                     (unsigned long)rem_h, (unsigned long)rem_m);
-        } else {
-            snprintf(sched_txt, sizeof(sched_txt),
-                     "%s  \xe2\x80\xa2  Step %d/%d",
-                     st.schedule_name,
-                     st.schedule_step + 1, st.schedule_total_steps);
-        }
-        lv_label_set_text(s_preset_active_lbl, sched_txt);
-    } else {
-        lv_obj_clear_flag(s_preset_normal, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_preset_active, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    // Highlight the active preset button (border glow when its schedule is running)
-    for (int i = 0; i < 3; i++) {
-        bool active = st.schedule_active &&
-                      strcmp(st.schedule_name, k_preset_names[i]) == 0;
-        lv_obj_set_style_border_color(s_preset_btns[i],
-            active ? COL_ACCENT : lv_color_hex(0x888888), LV_PART_MAIN);
-        lv_obj_set_style_border_width(s_preset_btns[i],
-            active ? 2 : 1, LV_PART_MAIN);
-    }
+    // Main button area: tab containers, schedule state, heat button enable/dim
+    update_main_button_area(&st);
 
     // History chart: update every tick (500 ms timer), but track data per call
     if (!st.sensor_error) {
@@ -1314,15 +1609,41 @@ static void update_timer_cb(lv_timer_t *timer)
 
         if (s_current == GUI_SCREEN_HISTORY) {
             char tmp[24];
+            bool use_c = s_config.show_temperature_c;
             if (s_hist_min < 9000.0f) {
-                snprintf(tmp, sizeof(tmp), "Min: %.1f\xC2\xB0""F", s_hist_min);
+                if (use_c) {
+                    float cv = (s_hist_min - 32.0f) * 5.0f / 9.0f;
+                    snprintf(tmp, sizeof(tmp), "Min: %.1f\xC2\xB0""C", cv);
+                } else {
+                    snprintf(tmp, sizeof(tmp), "Min: %.1f\xC2\xB0""F", s_hist_min);
+                }
                 lv_label_set_text(s_lbl_hist_min, tmp);
             }
-            snprintf(tmp, sizeof(tmp), "Now: %.1f\xC2\xB0""F", st.temperature_f);
+            if (use_c) {
+                float cv = (st.temperature_f - 32.0f) * 5.0f / 9.0f;
+                snprintf(tmp, sizeof(tmp), "Now: %.1f\xC2\xB0""C", cv);
+            } else {
+                snprintf(tmp, sizeof(tmp), "Now: %.1f\xC2\xB0""F", st.temperature_f);
+            }
             lv_label_set_text(s_lbl_hist_current, tmp);
             if (s_hist_max > -9000.0f) {
-                snprintf(tmp, sizeof(tmp), "Max: %.1f\xC2\xB0""F", s_hist_max);
+                if (use_c) {
+                    float cv = (s_hist_max - 32.0f) * 5.0f / 9.0f;
+                    snprintf(tmp, sizeof(tmp), "Max: %.1f\xC2\xB0""C", cv);
+                } else {
+                    snprintf(tmp, sizeof(tmp), "Max: %.1f\xC2\xB0""F", s_hist_max);
+                }
                 lv_label_set_text(s_lbl_hist_max, tmp);
+            }
+            // Y-axis labels (scale markers)
+            if (use_c) {
+                lv_label_set_text(s_lbl_hist_y_top, "149\xC2\xB0""C");
+                lv_label_set_text(s_lbl_hist_y_mid, "88\xC2\xB0""C");
+                lv_label_set_text(s_lbl_hist_y_bot, "15\xC2\xB0""C");
+            } else {
+                lv_label_set_text(s_lbl_hist_y_top, "320\xC2\xB0""F");
+                lv_label_set_text(s_lbl_hist_y_mid, "190\xC2\xB0""F");
+                lv_label_set_text(s_lbl_hist_y_bot, "60\xC2\xB0""F");
             }
         }
     }
