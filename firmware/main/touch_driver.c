@@ -143,6 +143,23 @@ bool touch_driver_init(void)
         }
     }
 
+    // FT6336U register 0x88 (PERIODACTIVE): scan period in active mode.
+    // Unit is 10ms; default is 6 = 60ms → only ~16Hz effective touch rate.
+    // Set to 1 = 10ms → 100Hz so quick taps are not missed.
+    // NOTE: 0x80 is THGROUP (touch threshold) — not this register. Do NOT
+    // write to 0x80; setting it to 1 floods LVGL with phantom touches.
+    {
+        uint8_t period[] = {0x88, 0x01};
+        esp_err_t rc = i2c_master_write_to_device(TOUCH_I2C_PORT, 0x38,
+                                                   period, sizeof(period),
+                                                   pdMS_TO_TICKS(100));
+        if (rc != ESP_OK) {
+            ESP_LOGW(TAG, "FT6336U PERIODACTIVE write failed: %s", esp_err_to_name(rc));
+        } else {
+            ESP_LOGI(TAG, "FT6336U scan period set to 10ms (100Hz)");
+        }
+    }
+
     s_initialized = true;
     ESP_LOGI(TAG, "FT6336U touch initialized (%dx%d)", LCD_H_RES, LCD_V_RES);
     return true;

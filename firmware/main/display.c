@@ -221,12 +221,13 @@ bool display_init(void)
         };
         s_indev = lvgl_port_add_touch(&touch_cfg);
 
-        // Shorten the indev poll period from the ~30ms default to 16ms (~60Hz).
-        // The default means a quick tap (<30ms) can slip between polls and be
-        // missed entirely.  16ms halves the worst-case miss window.
+        // Reduce indev poll period to 8ms (~125Hz).
+        // At 16ms a quick tap (~20ms) can slip between two polls and never
+        // register as "pressed".  8ms halves that miss window at negligible
+        // I2C overhead (a few bytes per poll).
         if (s_indev != NULL && lvgl_port_lock(0)) {
             lv_timer_t *t = lv_indev_get_read_timer(s_indev);
-            if (t) lv_timer_set_period(t, 16);
+            if (t) lv_timer_set_period(t, 8);
             lvgl_port_unlock();
         }
     }

@@ -61,5 +61,7 @@ CONFIG_CROCKPOT_BUTTON_SELECT_GPIO=-1
 CONFIG_CROCKPOT_MOCK_TEMPERATURE=y
 CONFIG_CROCKPOT_MOCK_RELAY=y
 
-# Smaller LVGL draw buffer — 20 lines × 480px × 2B = ~19KB (safe for C3 SRAM)
-CONFIG_CROCKPOT_LCD_DRAW_BUFFER_LINES=20
+# LVGL draw buffer — 40 lines × 480px × 2B × 2 buffers = ~75KB
+# Double-buffer allows DMA transfer and LVGL rendering to run in parallel,
+# eliminating the stall between flushes.  If build fails with OOM, reduce to 30.
+CONFIG_CROCKPOT_LCD_DRAW_BUFFER_LINES=40
