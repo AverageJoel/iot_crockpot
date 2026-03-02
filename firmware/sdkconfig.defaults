@@ -14,9 +14,9 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 
 # No PSRAM on XIAO ESP32-C3
 
-# UART console via CH340C USB-UART bridge (GPIO20=TXD, GPIO21=RXD)
-# Do NOT use GPIO20/21 for display or other peripherals.
-CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+# XIAO ESP32-C3 uses native USB Serial/JTAG (no CH340C — confirmed "USB Serial
+# Device" in Device Manager).  GPIO20 (D7) and GPIO21 (D6) are free I/O.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 
 # Partition table
 CONFIG_PARTITION_TABLE_CUSTOM=y
@@ -60,6 +60,10 @@ CONFIG_CROCKPOT_BUTTON_SELECT_GPIO=-1
 # Mock hardware — no MAX31855 or relay on XIAO test rig
 CONFIG_CROCKPOT_MOCK_TEMPERATURE=y
 CONFIG_CROCKPOT_MOCK_RELAY=y
+
+# Touch INT pin — wire display T_INT/CTP_INT → XIAO D7 (GPIO20), then set to 20.
+# Leave at -1 until the wire is physically connected (floating pin = phantom ISRs).
+CONFIG_CROCKPOT_TOUCH_INT=-1
 
 # LVGL draw buffer — 40 lines × 480px × 2B × 2 buffers = ~75KB
 # Double-buffer allows DMA transfer and LVGL rendering to run in parallel,
