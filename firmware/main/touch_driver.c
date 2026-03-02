@@ -20,15 +20,36 @@
 #include "esp_lcd_touch_ft5x06.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
 #include <string.h>
 
 static const char *TAG = "touch_driver";
 
-#define TOUCH_I2C_PORT   I2C_NUM_0
-#define TOUCH_I2C_FREQ   400000   // 400 kHz
+#define TOUCH_I2C_PORT      I2C_NUM_0
+#define TOUCH_I2C_FREQ      400000   // 400 kHz
+#define TOUCH_POLL_INTERVAL_MS  8    // poll task interval
 
-static esp_lcd_touch_handle_t s_tp_handle  = NULL;
+static esp_lcd_touch_handle_t s_tp_handle   = NULL;
 static bool                   s_initialized = false;
+
+// ── Touch cache (written by poll task, read by LVGL indev callback) ─────────
+// Decouples I2C reads from the LVGL rendering task so the cache is always
+// fresh regardless of how long a frame took to render.
+static touch_point_t      s_cache       = {0};
+static SemaphoreHandle_t  s_cache_mutex = NULL;
+
+#if CONFIG_CROCKPOT_TOUCH_INT >= 0
+// If INT is wired: ISR gives this semaphore, task blocks on it instead of
+// sleeping.  Sub-ms press latency, zero wasted I2C reads.
+static SemaphoreHandle_t  s_int_sem = NULL;
+static void IRAM_ATTR touch_int_isr(void *arg) {
+    BaseType_t woken = pdFALSE;
+    xSemaphoreGiveFromISR(s_int_sem, &woken);
+    portYIELD_FROM_ISR(woken);
+}
+#endif
 
 bool touch_driver_init(void)
 {
@@ -212,4 +233,85 @@ bool touch_driver_read(touch_point_t *point)
     point->y       = point->pressed ? y[0] : 0;
 
     return point->pressed;
+}
+
+bool touch_driver_read_cached(touch_point_t *point)
+{
+    if (point == NULL) return false;
+    if (s_cache_mutex == NULL) {
+        // Task not started yet — fall back to direct read
+        return touch_driver_read(point);
+    }
+    xSemaphoreTake(s_cache_mutex, portMAX_DELAY);
+    *point = s_cache;
+    xSemaphoreGive(s_cache_mutex);
+    return point->pressed;
+}
+
+// ── Background touch poll task ───────────────────────────────────────────────
+// Reads the FT6336U at a fixed interval (or on INT edge if wired) and stores
+// the result in s_cache.  Runs independently of LVGL so the cache is updated
+// even while LVGL is blocked waiting for SPI DMA to complete.
+static void touch_poll_task(void *arg)
+{
+    TickType_t last_wake = xTaskGetTickCount();
+
+    while (1) {
+#if CONFIG_CROCKPOT_TOUCH_INT >= 0
+        // INT-driven: block until the IC asserts the line (or 10ms timeout so
+        // we still detect releases when INT stays low during a held press).
+        xSemaphoreTake(s_int_sem, pdMS_TO_TICKS(10));
+#else
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(TOUCH_POLL_INTERVAL_MS));
+#endif
+
+        touch_point_t pt;
+        esp_lcd_touch_read_data(s_tp_handle);
+
+        uint16_t x[1], y[1], strength[1];
+        uint8_t  cnt = 0;
+        esp_lcd_touch_get_coordinates(s_tp_handle, x, y, strength, &cnt, 1);
+
+        pt.pressed = (cnt > 0);
+        pt.x       = pt.pressed ? x[0] : 0;
+        pt.y       = pt.pressed ? y[0] : 0;
+
+        xSemaphoreTake(s_cache_mutex, portMAX_DELAY);
+        s_cache = pt;
+        xSemaphoreGive(s_cache_mutex);
+    }
+}
+
+void touch_driver_start_task(void)
+{
+    if (!s_initialized) {
+        ESP_LOGE(TAG, "touch_driver_start_task: driver not initialized");
+        return;
+    }
+
+    s_cache_mutex = xSemaphoreCreateMutex();
+    configASSERT(s_cache_mutex);
+
+#if CONFIG_CROCKPOT_TOUCH_INT >= 0
+    s_int_sem = xSemaphoreCreateBinary();
+    configASSERT(s_int_sem);
+
+    gpio_config_t int_cfg = {
+        .pin_bit_mask = (1ULL << CONFIG_CROCKPOT_TOUCH_INT),
+        .mode         = GPIO_MODE_INPUT,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,
+        .intr_type    = GPIO_INTR_NEGEDGE,
+    };
+    gpio_config(&int_cfg);
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(CONFIG_CROCKPOT_TOUCH_INT, touch_int_isr, NULL);
+    ESP_LOGI(TAG, "Touch poll task: INT-driven (GPIO %d)", CONFIG_CROCKPOT_TOUCH_INT);
+#else
+    ESP_LOGI(TAG, "Touch poll task: polling every %dms", TOUCH_POLL_INTERVAL_MS);
+#endif
+
+    // Priority one below LVGL's max so it runs during LVGL's DMA waits
+    // without starving the LVGL task.
+    xTaskCreate(touch_poll_task, "touch_poll", 2048, NULL,
+                configMAX_PRIORITIES - 2, NULL);
 }

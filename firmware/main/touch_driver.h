@@ -50,15 +50,38 @@ bool touch_driver_init(void);
 esp_lcd_touch_handle_t touch_driver_get_handle(void);
 
 /**
- * @brief Read the current touch state
+ * @brief Read the current touch state directly from hardware (blocking I2C).
  *
- * Triggers a hardware read and returns whether a touch is active
- * and its coordinates. Non-blocking.
+ * Prefer touch_driver_read_cached() for the LVGL indev callback — this
+ * function is called internally by the touch poll task.
  *
  * @param point  Output: current touch state and coordinates
  * @return true if touch is currently pressed
  */
 bool touch_driver_read(touch_point_t *point);
+
+/**
+ * @brief Read the most recent touch state from the poll-task cache.
+ *
+ * Returns immediately (no I2C traffic).  The background touch task keeps
+ * this cache updated at ~8 ms regardless of what LVGL is doing, so the
+ * LVGL indev callback always gets current data even during heavy rendering.
+ *
+ * @param point  Output: latest touch state and coordinates
+ * @return true if touch is currently pressed
+ */
+bool touch_driver_read_cached(touch_point_t *point);
+
+/**
+ * @brief Start the background touch polling task.
+ *
+ * Creates a FreeRTOS task that reads the FT6336U every 8 ms and stores
+ * the result in an internal cache.  Call once after touch_driver_init().
+ *
+ * If CONFIG_CROCKPOT_TOUCH_INT >= 0 (INT pin wired), the task uses a
+ * GPIO interrupt instead of a fixed interval — giving sub-ms press latency.
+ */
+void touch_driver_start_task(void);
 
 #ifdef __cplusplus
 }

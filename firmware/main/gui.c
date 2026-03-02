@@ -283,7 +283,7 @@ static void nav_settings_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     wake();
     s_current = GUI_SCREEN_SETTINGS;
-    lv_screen_load_anim(s_scr_settings, LV_SCR_LOAD_ANIM_OVER_LEFT, 100, 0, false);
+    lv_screen_load_anim(s_scr_settings, LV_SCR_LOAD_ANIM_FADE_IN, 120, 0, false);
 }
 
 static void nav_wifi_cb(lv_event_t *e)
@@ -291,7 +291,7 @@ static void nav_wifi_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     wake();
     s_current = GUI_SCREEN_WIFI;
-    lv_screen_load_anim(s_scr_wifi, LV_SCR_LOAD_ANIM_OVER_LEFT, 100, 0, false);
+    lv_screen_load_anim(s_scr_wifi, LV_SCR_LOAD_ANIM_FADE_IN, 120, 0, false);
 }
 
 static void nav_info_cb(lv_event_t *e)
@@ -299,7 +299,7 @@ static void nav_info_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     wake();
     s_current = GUI_SCREEN_INFO;
-    lv_screen_load_anim(s_scr_info, LV_SCR_LOAD_ANIM_OVER_LEFT, 100, 0, false);
+    lv_screen_load_anim(s_scr_info, LV_SCR_LOAD_ANIM_FADE_IN, 120, 0, false);
 }
 
 static void nav_back_cb(lv_event_t *e)
@@ -307,7 +307,7 @@ static void nav_back_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     wake();
     s_current = GUI_SCREEN_MAIN;
-    lv_screen_load_anim(s_scr_main, LV_SCR_LOAD_ANIM_OVER_RIGHT, 100, 0, false);
+    lv_screen_load_anim(s_scr_main, LV_SCR_LOAD_ANIM_FADE_IN, 120, 0, false);
 }
 
 static void nav_history_cb(lv_event_t *e)
@@ -315,7 +315,7 @@ static void nav_history_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     wake();
     s_current = GUI_SCREEN_HISTORY;
-    lv_screen_load_anim(s_scr_history, LV_SCR_LOAD_ANIM_OVER_LEFT, 100, 0, false);
+    lv_screen_load_anim(s_scr_history, LV_SCR_LOAD_ANIM_FADE_IN, 120, 0, false);
 }
 
 static void nav_schedule_build_cb(lv_event_t *e)
@@ -323,7 +323,7 @@ static void nav_schedule_build_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     wake();
     s_current = GUI_SCREEN_SCHEDULE_BUILD;
-    lv_screen_load_anim(s_scr_schedule_build, LV_SCR_LOAD_ANIM_OVER_LEFT, 100, 0, false);
+    lv_screen_load_anim(s_scr_schedule_build, LV_SCR_LOAD_ANIM_FADE_IN, 120, 0, false);
 }
 
 static void cf_toggle_cb(lv_event_t *e)
@@ -466,7 +466,7 @@ static void nav_custom_sched_cb(lv_event_t *e)
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
     wake();
     s_current = GUI_SCREEN_SCHEDULE_BUILD;
-    lv_screen_load_anim(s_scr_schedule_build, LV_SCR_LOAD_ANIM_OVER_LEFT, 100, 0, false);
+    lv_screen_load_anim(s_scr_schedule_build, LV_SCR_LOAD_ANIM_FADE_IN, 120, 0, false);
 }
 
 /** Tap Manual tab button */
@@ -512,7 +512,7 @@ static void sched_preset_cb(lv_event_t *e)
     snprintf(msg, sizeof(msg), "Started: %s", sched->name);
     gui_show_message(msg, 3000);
     s_current = GUI_SCREEN_MAIN;
-    lv_screen_load_anim(s_scr_main, LV_SCR_LOAD_ANIM_OVER_RIGHT, 100, 0, false);
+    lv_screen_load_anim(s_scr_main, LV_SCR_LOAD_ANIM_FADE_IN, 120, 0, false);
 }
 
 static void sched_stop_cb(lv_event_t *e)
@@ -634,7 +634,7 @@ static void build_start_cb(lv_event_t *e)
     crockpot_schedule_start(&s_custom_schedule);
     gui_show_message("Custom schedule started", 3000);
     s_current = GUI_SCREEN_MAIN;
-    lv_screen_load_anim(s_scr_main, LV_SCR_LOAD_ANIM_OVER_RIGHT, 100, 0, false);
+    lv_screen_load_anim(s_scr_main, LV_SCR_LOAD_ANIM_FADE_IN, 120, 0, false);
 }
 
 // ============================================================================
@@ -1795,7 +1795,7 @@ void gui_set_screen(gui_screen_t screen)
     if (!lvgl_port_lock(0)) return;
 
     s_current = screen;
-    lv_screen_load_anim(targets[screen], LV_SCR_LOAD_ANIM_OVER_LEFT, 100, 0, false);
+    lv_screen_load_anim(targets[screen], LV_SCR_LOAD_ANIM_FADE_IN, 120, 0, false);
 
     lvgl_port_unlock();
 }
@@ -1806,7 +1806,7 @@ void gui_back(void)
     if (!lvgl_port_lock(0)) return;
 
     s_current = GUI_SCREEN_MAIN;
-    lv_screen_load_anim(s_scr_main, LV_SCR_LOAD_ANIM_OVER_RIGHT, 100, 0, false);
+    lv_screen_load_anim(s_scr_main, LV_SCR_LOAD_ANIM_FADE_IN, 120, 0, false);
 
     lvgl_port_unlock();
 }

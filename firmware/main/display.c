@@ -31,6 +31,17 @@
 
 static const char *TAG = "display";
 
+// LVGL indev read callback — reads from the touch task's cache (no I2C here).
+static void display_touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
+{
+    (void)indev;
+    touch_point_t pt;
+    touch_driver_read_cached(&pt);
+    data->state   = pt.pressed ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+    data->point.x = (lv_coord_t)pt.x;
+    data->point.y = (lv_coord_t)pt.y;
+}
+
 // Draw buffer height in lines — set via Kconfig (menuconfig → IoT Crockpot → Test/Development).
 // ESP32-S3 default: 50 lines (48KB, DMA SRAM).
 // ESP32-C3 default: 20 lines (19KB, fits in 400KB SRAM without PSRAM).
@@ -212,33 +223,35 @@ bool display_init(void)
         return false;
     }
 
-    // --- 5. Register touch with LVGL ---
-    esp_lcd_touch_handle_t tp = touch_driver_get_handle();
-    if (tp != NULL) {
-        const lvgl_port_touch_cfg_t touch_cfg = {
-            .disp   = s_disp,
-            .handle = tp,
-        };
-        s_indev = lvgl_port_add_touch(&touch_cfg);
+    // --- 5. Register touch with LVGL via custom indev + background task ------
+    // We bypass lvgl_port_add_touch and register a custom indev whose read
+    // callback reads from a cache filled by a dedicated FreeRTOS task.
+    //
+    // Why: lvgl_port_add_touch reads I2C directly inside the LVGL task timer.
+    // When LVGL is blocked waiting for SPI DMA between render bands (~4ms per
+    // band × 8 bands = ~32ms per frame at 80 MHz), the indev timer cannot
+    // fire.  A short tap that starts and ends during a render cycle is never
+    // detected.  The background task runs independently, so the cache always
+    // holds the latest state regardless of rendering load.
+    if (touch_driver_get_handle() != NULL) {
+        touch_driver_start_task();   // starts background poll/interrupt task
 
-        // Reduce indev poll period to 8ms (~125Hz).
-        // At 16ms a quick tap (~20ms) can slip between two polls and never
-        // register as "pressed".  8ms halves that miss window at negligible
-        // I2C overhead (a few bytes per poll).
-        // NOTE: use a real timeout (not 0) — lock(0) is non-blocking and
-        // silently fails if the LVGL task is running, leaving the period at
-        // the default ~30ms.
-        if (s_indev != NULL && lvgl_port_lock(200)) {
-            lv_timer_t *t = lv_indev_get_read_timer(s_indev);
-            if (t) {
-                lv_timer_set_period(t, 8);
-                ESP_LOGI(TAG, "Indev timer period set to 8ms");
-            } else {
-                ESP_LOGW(TAG, "Could not get indev read timer");
+        // Create indev inside LVGL lock — use a real timeout so this never
+        // silently fails the way lock(0) can.
+        if (lvgl_port_lock(200)) {
+            s_indev = lv_indev_create();
+            if (s_indev != NULL) {
+                lv_indev_set_type(s_indev, LV_INDEV_TYPE_POINTER);
+                lv_indev_set_display(s_indev, s_disp);
+                lv_indev_set_read_cb(s_indev, display_touch_read_cb);
+
+                lv_timer_t *t = lv_indev_get_read_timer(s_indev);
+                if (t) lv_timer_set_period(t, 8);
+                ESP_LOGI(TAG, "Custom touch indev registered (8ms poll, cached reads)");
             }
             lvgl_port_unlock();
         } else {
-            ESP_LOGE(TAG, "Failed to acquire LVGL lock for indev timer — period NOT set");
+            ESP_LOGE(TAG, "Failed to acquire LVGL lock for indev registration");
         }
     }
 
