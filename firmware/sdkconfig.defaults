@@ -63,7 +63,7 @@ CONFIG_CROCKPOT_MOCK_RELAY=y
 
 # Touch INT pin — wire display T_INT/CTP_INT → XIAO D7 (GPIO20), then set to 20.
 # Leave at -1 until the wire is physically connected (floating pin = phantom ISRs).
-CONFIG_CROCKPOT_TOUCH_INT=-1
+CONFIG_CROCKPOT_TOUCH_INT=20
 
 # LVGL draw buffer — 40 lines × 480px × 2B × 2 buffers = ~75KB
 # Double-buffer allows DMA transfer and LVGL rendering to run in parallel,
