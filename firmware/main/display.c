@@ -185,7 +185,7 @@ bool display_init(void)
         .io_handle    = display_driver_get_io(),
         .panel_handle = display_driver_get_panel(),
         .buffer_size  = LCD_H_RES * LVGL_DRAW_BUF_LINES,  // pixels, not bytes
-        .double_buffer = false,
+        .double_buffer = true,   // render next band while DMA sends current one
         .hres = LCD_H_RES,
         .vres = LCD_V_RES,
         .monochrome = false,
@@ -225,10 +225,20 @@ bool display_init(void)
         // At 16ms a quick tap (~20ms) can slip between two polls and never
         // register as "pressed".  8ms halves that miss window at negligible
         // I2C overhead (a few bytes per poll).
-        if (s_indev != NULL && lvgl_port_lock(0)) {
+        // NOTE: use a real timeout (not 0) — lock(0) is non-blocking and
+        // silently fails if the LVGL task is running, leaving the period at
+        // the default ~30ms.
+        if (s_indev != NULL && lvgl_port_lock(200)) {
             lv_timer_t *t = lv_indev_get_read_timer(s_indev);
-            if (t) lv_timer_set_period(t, 8);
+            if (t) {
+                lv_timer_set_period(t, 8);
+                ESP_LOGI(TAG, "Indev timer period set to 8ms");
+            } else {
+                ESP_LOGW(TAG, "Could not get indev read timer");
+            }
             lvgl_port_unlock();
+        } else {
+            ESP_LOGE(TAG, "Failed to acquire LVGL lock for indev timer — period NOT set");
         }
     }
 

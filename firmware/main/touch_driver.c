@@ -137,10 +137,12 @@ bool touch_driver_init(void)
                                                    ctrl, sizeof(ctrl),
                                                    pdMS_TO_TICKS(100));
         if (rc != ESP_OK) {
-            ESP_LOGW(TAG, "FT6336U keep-active write failed: %s", esp_err_to_name(rc));
-        } else {
-            ESP_LOGI(TAG, "FT6336U set to keep-active mode");
+            ESP_LOGW(TAG, "FT6336U CTRL write failed: %s", esp_err_to_name(rc));
         }
+        // Read back to verify
+        uint8_t reg = 0x86, val = 0xFF;
+        i2c_master_write_read_device(TOUCH_I2C_PORT, 0x38, &reg, 1, &val, 1, pdMS_TO_TICKS(100));
+        ESP_LOGI(TAG, "FT6336U CTRL (0x86) = 0x%02X (want 0x00)", val);
     }
 
     // FT6336U register 0x88 (PERIODACTIVE): scan period in active mode.
@@ -155,9 +157,26 @@ bool touch_driver_init(void)
                                                    pdMS_TO_TICKS(100));
         if (rc != ESP_OK) {
             ESP_LOGW(TAG, "FT6336U PERIODACTIVE write failed: %s", esp_err_to_name(rc));
-        } else {
-            ESP_LOGI(TAG, "FT6336U scan period set to 10ms (100Hz)");
         }
+        // Read back to verify — if this reads 0x06 (default), the IC ignores writes
+        uint8_t reg = 0x88, val = 0xFF;
+        i2c_master_write_read_device(TOUCH_I2C_PORT, 0x38, &reg, 1, &val, 1, pdMS_TO_TICKS(100));
+        ESP_LOGI(TAG, "FT6336U PERIODACTIVE (0x88) = 0x%02X (want 0x01, default 0x06)", val);
+    }
+
+    // FT6336U register 0x80 (THGROUP): touch detection threshold.
+    // This module ships with 0x46 (70), which requires ~3× more pressure than
+    // typical.  Set to 0x16 (22), a common sensitive-but-stable value.
+    // Increase if phantom touches appear; decrease if light taps are missed.
+    {
+        uint8_t thgroup[] = {0x80, 0x16};
+        esp_err_t rc = i2c_master_write_to_device(TOUCH_I2C_PORT, 0x38,
+                                                   thgroup, sizeof(thgroup),
+                                                   pdMS_TO_TICKS(100));
+        uint8_t reg = 0x80, val = 0xFF;
+        i2c_master_write_read_device(TOUCH_I2C_PORT, 0x38, &reg, 1, &val, 1, pdMS_TO_TICKS(100));
+        ESP_LOGI(TAG, "FT6336U THGROUP (0x80) = 0x%02X (%d) write %s",
+                 val, val, rc == ESP_OK ? "OK" : esp_err_to_name(rc));
     }
 
     s_initialized = true;

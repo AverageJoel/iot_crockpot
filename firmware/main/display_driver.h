@@ -78,8 +78,11 @@ void display_driver_fill(uint16_t color_rgb565);
 #define LCD_H_RES  CONFIG_CROCKPOT_LCD_WIDTH   // 480
 #define LCD_V_RES  CONFIG_CROCKPOT_LCD_HEIGHT  // 320
 
-// SPI clock for pixel data (40 MHz is safe for initial bring-up; try 80 MHz later)
-#define LCD_SPI_CLK_HZ  (40 * 1000 * 1000)
+// SPI clock for pixel data. ST7796 supports 80 MHz; ESP32-C3 SPI max is 80 MHz.
+// Higher clock = shorter DMA wait per flush = LVGL task unblocked more often
+// = indev timer fires more frequently = better touch responsiveness.
+// If display shows corruption, fall back to 40 MHz.
+#define LCD_SPI_CLK_HZ  (80 * 1000 * 1000)
 
 #ifdef __cplusplus
 }
