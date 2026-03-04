@@ -200,6 +200,24 @@ bool touch_driver_init(void)
                  val, val, rc == ESP_OK ? "OK" : esp_err_to_name(rc));
     }
 
+    // FT6336U register 0xA4 (interrupt control mode):
+    //   0x00 = polling mode — INT pulses at PERIODACTIVE rate regardless of touch.
+    //          The INT pin acts like a 10ms hardware timer; no real event-driven benefit.
+    //   0x01 = trigger mode — INT fires immediately on each touch event (press,
+    //          move, hold update).  Gives sub-ms press latency vs up to 10ms in polling.
+#if CONFIG_CROCKPOT_TOUCH_INT >= 0
+    {
+        uint8_t intmode[] = {0xA4, 0x01};
+        esp_err_t rc = i2c_master_write_to_device(TOUCH_I2C_PORT, 0x38,
+                                                   intmode, sizeof(intmode),
+                                                   pdMS_TO_TICKS(100));
+        uint8_t reg = 0xA4, val = 0xFF;
+        i2c_master_write_read_device(TOUCH_I2C_PORT, 0x38, &reg, 1, &val, 1, pdMS_TO_TICKS(100));
+        ESP_LOGI(TAG, "FT6336U INT mode (0xA4) = 0x%02X (want 0x01) write %s",
+                 val, rc == ESP_OK ? "OK" : esp_err_to_name(rc));
+    }
+#endif
+
     s_initialized = true;
     ESP_LOGI(TAG, "FT6336U touch initialized (%dx%d)", LCD_H_RES, LCD_V_RES);
     return true;

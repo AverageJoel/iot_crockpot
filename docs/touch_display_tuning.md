@@ -39,10 +39,15 @@ FT6336U IC ──(I2C)──► touch_poll task (8ms, priority MAX-2)
 LVGL indev timer ──────► display_touch_read_cb() ──► LVGL event system
 ```
 
-### Interrupt-driven upgrade (when INT pin is wired)
-Wire the FT6336U INT pin (active-low, pulses on new data) to a free GPIO. Set `CONFIG_CROCKPOT_TOUCH_INT` to that GPIO in menuconfig. The poll task will automatically switch from `vTaskDelayUntil(8ms)` to a GPIO ISR + semaphore, giving sub-millisecond press detection.
+### Interrupt-driven upgrade — IMPLEMENTED
+The FT6336U INT pin is wired to **D7 (GPIO 20)** on the XIAO. `CONFIG_CROCKPOT_TOUCH_INT=20` is set in `sdkconfig.defaults`. The poll task automatically switches from `vTaskDelayUntil(8ms)` to a GPIO ISR + semaphore, giving sub-millisecond press detection.
 
-**Available GPIOs on XIAO ESP32-C3**: GPIO 0 (D0) or GPIO 1 (D1) — both currently unused.
+Confirmed in boot log:
+```
+I (xxx) touch_driver: Touch poll task: INT-driven (GPIO 20)
+```
+
+Note: The XIAO uses native USB Serial/JTAG (no CH340). GPIO20 and GPIO21 are free I/O — they are NOT connected to any serial bridge chip.
 
 ## Display Rendering
 

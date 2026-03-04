@@ -40,7 +40,7 @@ This means:
 | 10          | CTP_SCL      | → | D5       | GPIO7  | Touch I2C clock                |
 | 11          | CTP_RST      | → | **3V3**  | —      | Tie high to keep touch active  |
 | 12          | CTP_SDA      | → | D4       | GPIO6  | Touch I2C data                 |
-| 13          | CTP_INT      | → | —        | —      | Leave **unconnected** (polled) |
+| 13          | CTP_INT      | → | D7       | GPIO20 | Touch interrupt (INT-driven)   |
 | 14          | SD_CS        | → | —        | —      | Leave **unconnected** (no SD)  |
 
 ---
@@ -64,14 +64,17 @@ XIAO ESP32-C3                         LCD Wiki 3.5" ST7796
   D3 ───┤ GPIO5        ├──────────────────── Pin 3  LCD_CS
   D4 ───┤ GPIO6  (SDA) ├──────────────────── Pin 12 CTP_SDA  (I2C)
   D5 ───┤ GPIO7  (SCL) ├──────────────────── Pin 10 CTP_SCL  (I2C)
-  D6 ───┤ GPIO21 (TX)  │  serial monitor via CH340 — do not use
-  D7 ───┤ GPIO20 (RX)  │  serial monitor via CH340 — do not use
+  D6 ───┤ GPIO21       │  free (native USB uses separate D+/D- lines)
+  D7 ───┤ GPIO20       ├──────────────────── Pin 13 CTP_INT  (touch interrupt)
   D8 ───┤ GPIO8  (SCK) ├──────────────────── Pin 7  SCK      (SPI)
   D9 ───┤ GPIO9  (MISO)├──────────────────── Pin 9  SDO/MISO (SPI)
  D10 ───┤ GPIO10 (MOSI)├──────────────────── Pin 6  SDI/MOSI (SPI)
         │              │
-        │  RST  BOOT   │                     Pin 13 CTP_INT  — leave NC
-        └──────────────┘                     Pin 14 SD_CS    — leave NC
+        │  RST  BOOT   │                     Pin 14 SD_CS    — leave NC
+        └──────────────┘
+
+Note: XIAO ESP32-C3 uses native USB Serial/JTAG (appears as "USB Serial Device"
+in Device Manager). GPIO20/21 are NOT the serial console — they are free GPIOs.
 ```
 
 ---
@@ -81,8 +84,8 @@ XIAO ESP32-C3                         LCD Wiki 3.5" ST7796
 - [ ] VCC connected to **5V** (not 3V3)
 - [ ] GND connected
 - [ ] 3V3 connected to Pin 11 (CTP_RST)
-- [ ] Pins 13 and 14 left unconnected
-- [ ] D6 and D7 (GPIO20/21) left free for serial monitor
+- [ ] Pin 13 (CTP_INT) connected to D7 (GPIO20)
+- [ ] Pin 14 (SD_CS) left unconnected
 - [ ] No shorts between adjacent header pins (use a continuity tester)
 
 ---
@@ -93,7 +96,11 @@ The expected boot sequence on serial monitor:
 
 ```
 I (xxx) display_driver: Initializing ST7796 SPI display
-I (xxx) touch_driver:   Initializing FT6336U touch (SDA=6 SCL=7 RST=-1 INT=-1)
+I (xxx) touch_driver:   Initializing FT6336U touch (SDA=6 SCL=7 RST=-1 INT=20)
+I (xxx) touch_driver:   FT6336U CTRL (0x86) = 0x00 (want 0x00)
+I (xxx) touch_driver:   FT6336U PERIODACTIVE (0x88) = 0x01 (want 0x01, default 0x06)
+I (xxx) touch_driver:   FT6336U THGROUP (0x80) = 0x16 (22) write OK
+I (xxx) touch_driver:   Touch poll task: INT-driven (GPIO 20)
 I (xxx) temperature:    Mock temperature mode — no MAX31855
 I (xxx) relay:          Mock relay mode — no relay GPIO
 I (xxx) display:        Display initialized — LVGL running (480x320)

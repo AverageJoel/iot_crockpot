@@ -68,7 +68,7 @@ iot_crockpot.bin binary size 0x164a00 bytes. Smallest app partition is 0x200000 
 ## Flashing
 
 Plug in the XIAO ESP32-C3 via USB. Find its COM port in **Device Manager → Ports**
-(look for "USB-SERIAL CH340").
+(look for **"USB Serial Device"** — the XIAO uses native USB Serial/JTAG, not a CH340 chip).
 
 ```powershell
 idf.py -p COM3 flash           # replace COM3 with your port
@@ -110,14 +110,15 @@ Quick reference:
 | 10 | CTP_SCL | D5 | 7 |
 | 11 | CTP_RST | **3V3** | — |
 | 12 | CTP_SDA | D4 | 6 |
-| 13 | CTP_INT | — | NC |
+| 13 | CTP_INT | D7 | GPIO20 |
 | 14 | SD_CS | — | NC |
 
 > **VCC must be 5V**, not 3.3V. The module has an onboard level converter
 > so 3.3V signals from the XIAO work fine, but the module itself needs 5V input.
 
-Serial monitor output comes through the CH340 USB bridge on D6/D7 (GPIO20/21).
-Do **not** use those pins for anything else.
+The XIAO ESP32-C3 uses **native USB Serial/JTAG** — serial monitor runs through the
+USB-C cable directly (no CH340 chip). GPIO20 and GPIO21 are free I/O pins.
+GPIO20 (D7) is used for the CTP_INT touch interrupt wire.
 
 ---
 
@@ -142,3 +143,17 @@ Do **not** use those pins for anything else.
 → Use `#if CONFIG_... >= 0` (preprocessor) not `if (CONFIG_... >= 0)` (runtime) when
   constructing `pin_bit_mask`. The compiler evaluates `(1ULL << -1)` at compile time
   even in a dead branch.
+
+**Guru Meditation Error: Load access fault at boot (in `uart_tx_flush` or similar)**
+→ Caused by a stale generated `sdkconfig` conflicting with a changed console config.
+  For example, if `sdkconfig.defaults` was changed from `CONFIG_ESP_CONSOLE_UART_DEFAULT=y`
+  to `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y`, but the old `sdkconfig` was not regenerated,
+  the binary tries to flush a UART peripheral that isn't configured.
+  **Fix:** delete the generated `sdkconfig` and rebuild:
+  ```powershell
+  Remove-Item sdkconfig
+  idf.py build
+  idf.py -p COM<N> flash monitor
+  ```
+  This also applies any time `sdkconfig.defaults` is changed — always delete `sdkconfig`
+  and rebuild from scratch to avoid stale option conflicts.
